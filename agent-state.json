@@ -1,1 +1,24 @@
-{"handled": {}}
+{
+ "handled": {
+  "1": {
+   "status": "naprawione",
+   "at": "2026-10-29T17:08:17Z",
+   "note": "commit 49c79d0: stały klucz podpisu APK + komunikat o ręcznej reinstalacji"
+  },
+  "2": {
+   "status": "propozycja",
+   "at": "2026-10-29T17:09:05Z",
+   "note": "egzaminy + przypomnienia; wymaga powiadomień (część androidowa) – czeka na decyzję"
+  },
+  "3": {
+   "status": "propozycja",
+   "at": "2026-10-29T17:14:12Z",
+   "note": "widget na ekran główny – praca natywna, duża"
+  },
+  "4": {
+   "status": "pominiete",
+   "at": "2026-10-29T17:30:09Z",
+   "note": "śmieć"
+  }
+ }
+}
