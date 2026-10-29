@@ -1,6 +1,17 @@
 {
-  "updated": "2026-10-29T17:32:08Z",
+  "updated": "2026-10-29T17:51:54Z",
   "issues": [
+    {
+      "body": "piątkowych labów mi nie widzi :c\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.13 (49c79d0)\nmotyw: klocki, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
+      "comments": 0,
+      "created_at": "2026-10-29T17:51:45Z",
+      "labels": [],
+      "number": 5,
+      "title": "[Błąd] piątkowych labów mi nie widzi :c",
+      "updated_at": "2026-10-29T17:51:45Z",
+      "user": "Loop-hash",
+      "comment_list": []
+    },
     {
       "body": "twoja stara\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.11 (527d4d8)\nmotyw: klocki, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 4, własnych zajęć: 0\ndzień w apce: 2026-10-29\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
       "comments": 0,
