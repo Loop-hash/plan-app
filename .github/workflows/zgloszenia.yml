@@ -1,0 +1,52 @@
+name: Zgłoszenia do pliku
+
+# Kopiuje otwarte zgłoszenia (Issues) do pliku issues.json na gałęzi "zgloszenia",
+# żeby agent mógł je przeczytać przez git. Nie dotyka gałęzi main, więc nie buduje apki.
+
+on:
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+  issue_comment:
+    types: [created, edited]
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: zgloszenia
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz zgłoszenia
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            -q '[.[] | select(.pull_request == null) | {number, title, body, created_at, updated_at, user: .user.login, labels: [.labels[].name], comments}]' \
+            | jq -s 'add // []' > open.json
+          # komentarze do zgłoszeń (dopiski, odpowiedzi)
+          jq -r '.[] | select(.comments > 0) | .number' open.json | while read n; do
+            gh api "repos/$GITHUB_REPOSITORY/issues/$n/comments" -q "[.[] | {issue: $n, user: .user.login, body, created_at}]"
+          done | jq -s 'add // []' > comments.json
+          jq --slurpfile c comments.json '{updated: (now | todate), issues: [.[] as $i | $i + {comment_list: [$c[0][] | select(.issue == $i.number)]}]}' open.json > issues.json
+          jq '.issues | length' issues.json
+      - name: Zapisz na gałęzi zgloszenia
+        run: |
+          mkdir repo && cd repo
+          git init -q
+          git config user.name "zgloszenia-bot"
+          git config user.email "zgloszenia-bot@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY"
+          if git fetch -q --depth 1 origin zgloszenia; then git checkout -q -b zgloszenia FETCH_HEAD; else git checkout -q --orphan zgloszenia; fi
+          cp ../issues.json issues.json
+          [ -f agent-state.json ] || echo '{"handled": {}}' > agent-state.json
+          git add issues.json agent-state.json
+          git diff --cached --quiet || git commit -q -m "Zgłoszenia: $(jq '.issues | length' issues.json) otwartych"
+          git push -q origin zgloszenia
