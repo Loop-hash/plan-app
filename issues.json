@@ -1,23 +1,4 @@
 {
-  "updated": "2026-10-29T19:47:55Z",
-  "issues": [
-    {
-      "body": "nadal w piatek nie mam labow :(\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.29 (9a03672)\nmotyw: matcha, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
-      "comments": 1,
-      "created_at": "2026-10-29T19:43:10Z",
-      "labels": [],
-      "number": 8,
-      "title": "[Błąd] nadal w piatek nie mam labow :(",
-      "updated_at": "2026-10-29T19:43:41Z",
-      "user": "Loop-hash",
-      "comment_list": [
-        {
-          "body": "i nie będzie xD",
-          "created_at": "2026-10-29T19:43:41Z",
-          "issue": 8,
-          "user": "Loop-hash"
-        }
-      ]
-    }
-  ]
+  "updated": "2026-10-29T19:54:27Z",
+  "issues": []
 }
