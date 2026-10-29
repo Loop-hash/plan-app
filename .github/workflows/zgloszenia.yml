@@ -5,7 +5,7 @@ name: Zgłoszenia do pliku
 
 on:
   issues:
-    types: [opened, edited, closed, reopened, labeled, unlabeled]
+    types: [opened, edited, closed, reopened, deleted, labeled, unlabeled]
   issue_comment:
     types: [created, edited]
   schedule:
