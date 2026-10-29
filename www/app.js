@@ -17,9 +17,9 @@ let refreshing = false;
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (s && Array.isArray(s.plans)) return { view: 'day', ...s };
+    if (s && Array.isArray(s.plans)) return { view: 'day', ...s, settings: { theme: 'blueprint', weekends: false, ...(s.settings || {}) } };
   } catch (e) { /* brak/uszkodzone dane */ }
-  return { plans: [], activeId: null, view: 'day' };
+  return { plans: [], activeId: null, view: 'day', settings: { theme: 'blueprint', weekends: false } };
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -274,6 +274,8 @@ function helpBox() {
     Możesz dodać kilka planów (np. swój i kolegi albo inną grupę) i przełączać je u góry.</div>`;
 }
 
+const PIN = '<svg class="pin" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21Z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="12" cy="9.5" r="2.4" fill="currentColor"/></svg>';
+let cardNo = 0;
 function eventCard(ev, now) {
   const { type, title } = splitTitle(ev);
   const past = ev.end <= now;
@@ -283,16 +285,20 @@ function eventCard(ev, now) {
     ? `<span class="now-tag">teraz · do końca ${dur(ev.end - now)}</span>`
     : !past && ev.start - now < 3 * 3600000 ? `<span>za ${dur(ev.start - now)}</span>` : `<span>${dur(ev.end - ev.start)}</span>`;
   const desc = ev.description && ev.description !== ev.summary ? `<div class="desc">${esc(ev.description)}</div>` : '';
-  return `<div class="card${past ? ' past' : ''}${isNow ? ' now' : ''}" style="--c: var(--${type.key})" data-act="toggle">
+  cardNo += 1;
+  return `<div class="card t-${type.key}${past ? ' past' : ''}${isNow ? ' now' : ''}" style="--c: var(--${type.key})" data-act="toggle">
+    <div class="card-no">DET. ${String(cardNo).padStart(2, '0')} · ${esc(type.label.toUpperCase())}</div>
     <div class="time"><span><b>${ev.allDay ? 'cały dzień' : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}</b></span>${right}</div>
     <div class="title">${esc(title)}</div>
-    <div class="meta"><span class="type-pill">${esc(type.label)}</span>${ev.location ? `<span>📍 ${esc(ev.location)}</span>` : ''}</div>
+    <div class="meta"><span class="type-pill">${esc(type.label)}</span>${ev.location ? `<span class="loc">${PIN}${esc(ev.location)}</span>` : ''}</div>
+    ${ev.allDay ? '' : `<div class="big-time"><b>${fmtTime(ev.start)}</b><span>–${fmtTime(ev.end)}</span></div>`}
     ${desc}
     ${isNow ? `<div class="progress" style="width:${prog.toFixed(1)}%"></div>` : ''}
   </div>`;
 }
 
 function dayView(plan) {
+  cardNo = 0;
   const evs = eventsOn(plan, selDate);
   const now = Date.now();
   if (!evs.length) {
@@ -305,15 +311,42 @@ function dayView(plan) {
   let lastEnd = null;
   for (const ev of evs) {
     if (lastEnd !== null && ev.start - lastEnd >= 15 * 60000) {
-      html += `<div class="gap">okienko ${dur(ev.start - lastEnd)}</div>`;
+      html += `<div class="gap"><span>okienko ${dur(ev.start - lastEnd)}</span></div>`;
     }
     html += eventCard(ev, now);
     lastEnd = Math.max(lastEnd ?? 0, ev.end);
   }
   const first = evs[0];
   const last = evs[evs.length - 1];
-  html += `<p class="hint" style="text-align:center;margin-top:14px">${evs.length} ${zajec(evs.length)} · ${first.allDay ? '' : `${fmtTime(first.start)}–${fmtTime(last.end)}`}</p>`;
+  html += `<p class="hint day-sum">${evs.length} ${zajec(evs.length)} · ${first.allDay ? '' : `${fmtTime(first.start)}–${fmtTime(last.end)}`}</p>`;
+  html += titleBlock(plan, evs);
   return html;
+}
+
+// Tabelka rysunkowa (widoczna tylko w motywie Blueprint)
+function isoWeek(ts) {
+  const d = new Date(ts); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const w1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - w1) / DAY - 3 + ((w1.getDay() + 6) % 7)) / 7);
+}
+function titleBlock(plan, evs) {
+  const wk = isoWeek(selDate);
+  const src = plan.kind === 'usos' ? plan.src : null;
+  const sem = src ? (/(\d+)\s*semestr/.exec(src.nazwa || '') || [])[1] : '';
+  const cell = (k, v) => `<div><small>${k}</small><b>${esc(v)}</b></div>`;
+  const first = evs[0];
+  const last = evs[evs.length - 1];
+  return `<div class="tblock">
+    ${cell('PLAN', (plan.name || '').toUpperCase().slice(0, 22))}
+    ${cell('SEMESTR', sem ? `${sem} · ${src.cdyd && /-L$/.test(src.cdyd) ? 'LATO' : 'ZIMA'}` : '—')}
+    ${cell('TYDZIEŃ', `${wk} · ${wk % 2 ? 'NIEPARZ.' : 'PARZ.'}`)}
+    ${cell('SKALA', '1 : 1')}
+    ${cell('ŹRÓDŁO', plan.kind === 'usos' ? 'USOSWEB' : 'ICAL')}
+    ${cell('ZAJĘCIA', `${evs.length} SZT.`)}
+    ${cell('ZAKRES', first && !first.allDay ? `${fmtTime(first.start)}–${fmtTime(last.end)}` : '—')}
+    ${cell('REW.', 'A')}
+  </div>`;
 }
 
 function weekView(plan) {
@@ -323,7 +356,7 @@ function weekView(plan) {
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i);
     const evs = eventsOn(plan, d);
-    if (!evs.length && i >= 5) continue; // pusty weekend pomijamy
+    if (!evs.length && i >= 5 && !state.settings?.weekends) continue; // pusty weekend pomijamy
     html += `<div class="day-head${d === today ? ' today' : ''}" data-act="goto" data-day="${d}">
       <span>${esc(cap(fmtDay(d)))}</span><small>${evs.length ? `${fmtTime(evs[0].start)}–${fmtTime(evs[evs.length - 1].end)}` : 'wolne'}</small></div>`;
     for (const ev of evs) {
@@ -591,6 +624,23 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   };
 }
 
+// ---------- motywy ----------
+const THEMES = [
+  { id: 'blueprint', name: 'Blueprint', bar: '#0d4597', sw: ['#0d4597', '#ffffff', '#5d86c9'] },
+  { id: 'klocki', name: 'Kolorowe klocki', bar: '#e7e7ea', sw: ['#b6efd9', '#f0643c', '#f6a8dc', '#0b84c8'] },
+  { id: 'atrament', name: 'Atrament', bar: '#ffffff', sw: ['#1f1d3d', '#ffffff', '#f7b88f'] },
+  { id: 'mono', name: 'Mono', bar: '#e6e7e9', sw: ['#e6e7e9', '#111111', '#bfe6dc'] },
+  { id: 'matcha', name: 'Matcha', bar: '#fbfaf1', sw: ['#fbfaf1', '#d3e6c3', '#c4405e'] },
+  { id: 'ciemny', name: 'Ciemny', bar: '#0f1115', sw: ['#0f1115', '#1c2029', '#7aa2ff'] },
+];
+function applyTheme() {
+  const t = THEMES.find((x) => x.id === state.settings?.theme) || THEMES[0];
+  document.documentElement.dataset.theme = t.id;
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.setAttribute('content', t.bar);
+}
+applyTheme();
+
 // ---------- ustawienia i aktualizacje ----------
 let update = null; // ostatnio sprawdzona wersja
 let updating = false;
@@ -622,12 +672,20 @@ async function settingsSheet() {
     return `<div class="upd"><div class="upd-text" id="updText">${update ? 'Masz najnowszą wersję.' : ''}</div>
       <button class="btn ghost block" data-act="check-update">Sprawdź aktualizacje</button></div>`;
   };
+  const cur = state.settings?.theme || 'blueprint';
+  const themes = THEMES.map((t) => `<button class="theme-tile${t.id === cur ? ' on' : ''}" data-act="theme" data-theme="${t.id}">
+      <span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><span class="tn">${esc(t.name)}</span></button>`).join('');
   openSheet(`<h3>Ustawienia</h3>
+    <div class="list-head">Wygląd</div>
+    <div class="theme-grid">${themes}</div>
+    <label class="switch-row"><span>Pokazuj weekendy w widoku tygodnia</span>
+      <input type="checkbox" id="setWeekends" ${state.settings?.weekends ? 'checked' : ''}></label>
     <div class="list-head">Aktualizacje</div>
     <div id="updBox">${updBox()}</div>
     <div class="list-head">O apce</div>
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
-    <p class="hint">Wygląd i motywy — wkrótce.</p>`);
+`);
+  $('setWeekends').addEventListener('change', (e) => { state.settings.weekends = e.target.checked; save(); render(); });
   settingsSheet.redraw = () => { const el = $('updBox'); if (el) el.innerHTML = updBox(); };
 }
 
@@ -685,6 +743,11 @@ document.addEventListener('click', (e) => {
     e.stopPropagation();
     const p = state.plans.find((x) => x.id === el.dataset.id);
     if (p?.kind === 'usos') groupSelectSheet({ plan: p }); else formSheet(p);
+    return;
+  }
+  if (act === 'theme') {
+    state.settings.theme = el.dataset.theme; save(); applyTheme(); render();
+    document.querySelectorAll('.theme-tile').forEach((t) => t.classList.toggle('on', t.dataset.theme === el.dataset.theme));
     return;
   }
   if (act === 'check-update') { doCheckUpdate(); return; }

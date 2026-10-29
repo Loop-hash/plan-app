@@ -248,3 +248,22 @@ input { font: inherit; }
 .upd-text:empty { display: none; }
 .bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+/* elementy używane tylko przez niektóre motywy */
+.card-no, .big-time, .tblock { display: none; }
+.loc { display: inline-flex; align-items: center; gap: 4px; }
+.pin { flex: none; }
+.day-sum { text-align: center; margin-top: 14px; }
+
+/* ustawienia: motywy */
+.theme-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.theme-tile {
+  display: flex; flex-direction: column; gap: 8px; align-items: stretch; text-align: left;
+  background: var(--card); border-radius: 14px; padding: 10px; border: 2px solid transparent;
+}
+.theme-tile.on { border-color: var(--accent); }
+.theme-tile .sw { display: flex; height: 26px; border-radius: 7px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset; }
+.theme-tile .sw i { flex: 1; }
+.theme-tile .tn { font-size: 12.5px; font-weight: 600; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border-radius: 12px; padding: 12px; margin-top: 8px; font-size: 14px; }
+.switch-row input { width: 22px; height: 22px; accent-color: var(--accent); }
