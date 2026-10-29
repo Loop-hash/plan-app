@@ -1,0 +1,17 @@
+{
+  "name": "plan-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plan zajęć Politechniki Śląskiej z USOS — Android",
+  "scripts": {
+    "test": "node test/ics.test.mjs",
+    "serve": "cd www && python3 -m http.server 8123"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  }
+}

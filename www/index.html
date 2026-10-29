@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1115">
+  <title>Plan</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <div class="top-row">
+        <button class="plan-switch" id="planSwitch" aria-haspopup="listbox">
+          <span class="plan-name" id="planName">Plan</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="top-actions">
+          <button class="icon-btn" id="refreshBtn" title="Odśwież" aria-label="Odśwież">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="icon-btn" id="plansBtn" title="Plany" aria-label="Zarządzaj planami">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="status" id="status"></div>
+      <div class="nav-row" id="navRow">
+        <button class="icon-btn" id="prevBtn" aria-label="Wstecz">‹</button>
+        <button class="date-label" id="dateLabel"></button>
+        <button class="icon-btn" id="nextBtn" aria-label="Dalej">›</button>
+      </div>
+      <div class="tabs" id="tabs">
+        <button data-view="day" class="tab">Dzień</button>
+        <button data-view="week" class="tab">Tydzień</button>
+        <button data-view="changes" class="tab">Zmiany <span class="badge" id="changesBadge" hidden></span></button>
+      </div>
+      <div class="week-strip" id="weekStrip"></div>
+    </header>
+
+    <main id="content" class="content"></main>
+  </div>
+
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <div class="sheet" id="sheet" hidden></div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
