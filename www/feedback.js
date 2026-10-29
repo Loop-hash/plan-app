@@ -85,3 +85,14 @@ export async function sendFeedback(data) {
   const j = await r.json();
   return { number: j.number, url: j.html_url };
 }
+
+// Odpowiedź twórcy na zgłoszenie (tylko z panelu admina) — komentarz pod Issue.
+export async function postReply(number, text) {
+  if (!FEEDBACK_TOKEN) throw new Error('brak klucza w tej wersji apki');
+  const r = await fetch(`https://api.github.com/repos/${REPO}/issues/${number}/comments`, {
+    method: 'POST',
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${FEEDBACK_TOKEN}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+    body: JSON.stringify({ body: text.trim() }),
+  });
+  if (!r.ok) throw new Error(`GitHub odpowiedział ${r.status}`);
+}

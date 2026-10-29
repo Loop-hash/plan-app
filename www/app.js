@@ -8,7 +8,7 @@ import {
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
 import { notifyAvailable, ensurePermission, reschedule, LEADS, defaultLeads } from './notify.js';
-import { sendFeedback, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
+import { sendFeedback, postReply, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -1295,7 +1295,7 @@ async function autoCheckUpdate() {
   try {
     update = await checkUpdate();
     try { localStorage.setItem(UPD_KEY, String(Date.now())); } catch (e) { /* */ }
-    $('updDot').hidden = !update.newer;
+    refreshDot();
     if (update.newer) toast('Jest nowa wersja apki — Ustawienia → Aktualizuj');
   } catch (e) { /* bez internetu sprawdzimy następnym razem */ }
 }
@@ -1327,8 +1327,9 @@ async function settingsSheet() {
     <div id="updBox">${updBox()}</div>
     <div class="list-head">Zgłoszenia</div>
     <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
+    ${myReports().length ? `<button class="choice${unreadReplies() ? ' has-new' : ''}" data-act="my-reports"><b>Twoje zgłoszenia${unreadReplies() ? ` · ${unreadReplies()} ${unreadReplies() === 1 ? 'nowa odpowiedź' : 'nowe odpowiedzi'}` : ''}</b><span>Odpowiedzi twórcy na to, co wysłałeś z tego telefonu</span></button>` : ''}
     <div class="list-head">O apce</div>
-    <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
+    <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.<br>Kod apki jest otwarty (licencja MIT): <a href="https://github.com/Loop-hash/plan-app" target="_blank">github.com/Loop-hash/plan-app</a></div>
     ${isAdmin() ? '<button class="choice" data-act="admin"><b>Panel admina</b><span>Zgłoszenia, agent, log błędów, podgląd powitania</span></button>' : ''}
     <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny</button>
 `);
@@ -1367,7 +1368,7 @@ async function doCheckUpdate() {
   try {
     update = await checkUpdate();
     try { localStorage.setItem(UPD_KEY, String(Date.now())); } catch (e) { /* */ }
-    $('updDot').hidden = !update.newer;
+    refreshDot();
   } catch (e) {
     if (t) t.textContent = `Nie udało się sprawdzić: ${e.message || e}`;
     return;
@@ -1480,7 +1481,11 @@ async function feedbackSheet() {
       const r = await sendFeedback({ kind, text, who: f.who.value, diag, shots });
       closeSheet();
       if (r.browser) { window.open(r.url, '_blank'); toast('Dokończ zgłoszenie na GitHubie'); }
-      else toast(`Dzięki! Zgłoszenie #${r.number} wysłane`);
+      else {
+        const list = myReports(); list.push({ n: r.number, title: text.split('\n')[0].slice(0, 80), at: Date.now(), seen: 0 });
+        saveMyReports(list);
+        toast(`Dzięki! Zgłoszenie #${r.number} wysłane`);
+      }
     } catch (err) {
       logError(`feedback: ${err.message}`);
       $('fbErr').textContent = `Nie udało się wysłać: ${err.message}. Sprawdź internet i spróbuj jeszcze raz.`;
@@ -1635,13 +1640,78 @@ async function adminSheet() {
       const h = handled[x.number];
       return `<div class="plan-item"><div class="pi-main"><div class="pi-name">#${x.number} ${esc(x.title)}</div>
         <div class="pi-sub">${esc(fmtShort(Date.parse(x.created_at)))}${x.comments ? ` · ${x.comments} kom.` : ''}${h ? ` · agent: ${esc(h.status)}` : ' · agent: jeszcze nie widział'}</div>
-        ${h?.note ? `<div class="pi-sub">${esc(h.note)}</div>` : ''}</div></div>`;
+        ${h?.note ? `<div class="pi-sub">${esc(h.note)}</div>` : ''}
+        ${(x.comment_list || []).filter((c) => c.user === 'Loop-hash').map((c) => `<div class="reply small"><div class="rp-who">Twoja odpowiedź · ${esc(fmtShort(Date.parse(c.created_at)))}</div>${fmtReply(c.body)}</div>`).join('')}</div>
+        <button class="edit" data-act="adm-reply" data-n="${x.number}" data-title="${esc(x.title)}">Odpowiedz</button></div>`;
     }).join('') : '<p class="hint">Brak otwartych zgłoszeń.</p>')
       + `<p class="hint">Lista z ${esc(fmtDateTime(Date.parse(iss.updated)))}${st.lastRun ? ` · agent ostatnio: ${esc(fmtDateTime(Date.parse(st.lastRun)))}` : ''}</p>`;
   } catch (e) {
     const box = $('admIssues');
     if (box) box.innerHTML = `<p class="hint">Nie udało się pobrać zgłoszeń: ${esc(e.message)}</p>`;
   }
+}
+
+// ---------- odpowiedzi twórcy na zgłoszenia (tylko w jedną stronę) ----------
+const MYREP_KEY = 'planapp.myreports';
+const REPLIES_CHECK_KEY = 'planapp.repliesCheck';
+let repliesData = null; // {replies: {n: [{at, body}]}, closed: [n]}
+function myReports() { try { return JSON.parse(localStorage.getItem(MYREP_KEY) || '[]'); } catch (e) { return []; } }
+function saveMyReports(list) { try { localStorage.setItem(MYREP_KEY, JSON.stringify(list.slice(-30))); } catch (e) { /* */ } }
+const repliesFor = (n) => (repliesData?.replies?.[n] || []);
+function unreadReplies() {
+  if (!repliesData) return 0;
+  return myReports().reduce((a, r) => a + Math.max(0, repliesFor(r.n).length - (r.seen || 0)), 0);
+}
+function refreshDot() { const d = $('updDot'); if (d) d.hidden = !(update?.newer || unreadReplies()); }
+async function checkReplies(force = false) {
+  if (!myReports().length) return;
+  let last = 0;
+  try { last = +localStorage.getItem(REPLIES_CHECK_KEY) || 0; } catch (e) { /* */ }
+  if (!force && repliesData && Date.now() - last < 30 * 60000) return;
+  try {
+    const before = unreadReplies();
+    repliesData = await fetch(`${ISSUES_URL}replies.json?t=${Date.now()}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    try { localStorage.setItem(REPLIES_CHECK_KEY, String(Date.now())); localStorage.setItem(REPLIES_CHECK_KEY + '.data', JSON.stringify(repliesData)); } catch (e) { /* */ }
+    const now = unreadReplies();
+    if (now > before) toast(now === 1 ? 'Twórca apki odpisał na Twoje zgłoszenie — Ustawienia' : `Masz ${now} nowe odpowiedzi na zgłoszenia — Ustawienia`);
+  } catch (e) { /* bez internetu — spróbujemy później */ }
+  refreshDot();
+}
+try { repliesData = JSON.parse(localStorage.getItem(REPLIES_CHECK_KEY + '.data') || 'null'); } catch (e) { /* */ }
+
+const fmtReply = (t) => esc(t).replace(/\n/g, '<br>');
+async function myReportsSheet() {
+  const draw = () => {
+    const list = myReports().slice().reverse();
+    const closed = new Set(repliesData?.closed || []);
+    openSheet(`<h3>Twoje zgłoszenia</h3>
+      <p class="hint">Tu widać odpowiedzi twórcy apki. Nie da się na nie odpisać — jeśli chcesz coś dodać, wyślij nowe zgłoszenie.</p>
+      ${list.map((r) => {
+        const reps = repliesFor(r.n);
+        return `<div class="report"><div class="rp-head"><b>#${r.n} ${esc(r.title)}</b><span>${esc(fmtShort(r.at))}${closed.has(r.n) ? ' · zamknięte' : ''}</span></div>
+          ${reps.length ? reps.map((x) => `<div class="reply"><div class="rp-who">Odpowiedź twórcy · ${esc(fmtShort(Date.parse(x.at)))}</div>${fmtReply(x.body)}</div>`).join('') : '<div class="rp-none">Jeszcze bez odpowiedzi.</div>'}</div>`;
+      }).join('')}`);
+  };
+  draw();
+  await checkReplies(true);
+  if (!sheetOpen) return;
+  saveMyReports(myReports().map((r) => ({ ...r, seen: repliesFor(r.n).length })));
+  refreshDot(); draw();
+}
+
+function replySheet(n, title) {
+  openSheet(`<h3>Odpowiedz na #${n}</h3><p class="hint">${esc(title)}</p>
+    <label class="field"><span>Twoja odpowiedź (widoczna w apce autora i publicznie na GitHubie)</span>
+      <textarea id="rpText" rows="5" maxlength="2000" placeholder="np. Naprawione w następnej wersji — zaktualizuj apkę."></textarea></label>
+    <div class="err-box" id="rpErr" hidden></div>
+    <div class="sheet-actions"><button class="btn" id="rpSend">Wyślij</button><button class="btn ghost" data-act="admin">Wróć</button></div>`);
+  $('rpSend').addEventListener('click', async () => {
+    const text = $('rpText').value.trim();
+    if (text.length < 2) return;
+    $('rpSend').disabled = true; $('rpSend').textContent = 'Wysyłam…';
+    try { await postReply(n, text); toast(`Odpowiedź do #${n} wysłana`); adminSheet(); }
+    catch (e) { $('rpErr').textContent = `Nie udało się: ${e.message}`; $('rpErr').hidden = false; $('rpSend').disabled = false; $('rpSend').textContent = 'Wyślij'; }
+  });
 }
 
 // ---------- zdarzenia ----------
@@ -1668,6 +1738,8 @@ document.addEventListener('click', (e) => {
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'admin') { adminSheet(); return; }
+  if (act === 'adm-reply') { replySheet(+el.dataset.n, el.dataset.title || ''); return; }
+  if (act === 'my-reports') { myReportsSheet(); return; }
   if (act === 'adm-refresh') { adminRefreshAll(); return; }
   if (act === 'adm-update') { try { localStorage.removeItem(UPD_KEY); } catch (e2) { /* */ } closeSheet(); settingsSheet().then(() => doCheckUpdate()); return; }
   if (act === 'adm-clearlog') { try { localStorage.removeItem('planapp.errlog'); } catch (e2) { /* */ } adminSheet(); return; }
@@ -1752,7 +1824,7 @@ $('content').addEventListener('touchend', (e) => {
 }, { passive: true });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { render(); maybeAutoRefresh(); autoCheckUpdate(); }
+  if (!document.hidden) { render(); maybeAutoRefresh(); autoCheckUpdate(); checkReplies(); }
 });
 setInterval(() => { if (!document.hidden && !sheetOpen) render(); }, 60000);
 
@@ -1762,3 +1834,5 @@ maybeAutoRefresh();
 markStarted();
 autoCheckUpdate();
 syncReminders();
+refreshDot();
+checkReplies();
