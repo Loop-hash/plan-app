@@ -114,3 +114,22 @@ export async function fetchOpenIssues() {
   }));
   return { updated: new Date().toISOString(), issues: list.map((x) => ({ number: x.number, title: x.title, created_at: x.created_at, comments: x.comments, comment_list: x.comment_list })) };
 }
+
+// Odpowiedzi twórcy (komentarze właściciela) do podanych zgłoszeń — prosto z API.
+export async function fetchReplies(numbers, owner = 'Loop-hash') {
+  if (!FEEDBACK_TOKEN) throw new Error('brak klucza');
+  const h = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${FEEDBACK_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const replies = {};
+  const closed = [];
+  await Promise.all(numbers.map(async (n) => {
+    const [i, c] = await Promise.all([
+      fetch(`https://api.github.com/repos/${REPO}/issues/${n}?t=${Date.now()}`, { headers: h, cache: 'no-store' }),
+      fetch(`https://api.github.com/repos/${REPO}/issues/${n}/comments?t=${Date.now()}`, { headers: h, cache: 'no-store' }),
+    ]);
+    if (!i.ok || !c.ok) throw new Error(`GitHub odpowiedział ${i.ok ? c.status : i.status}`);
+    if ((await i.json()).state === 'closed') closed.push(n);
+    const mine = (await c.json()).filter((y) => y.user?.login === owner).map((y) => ({ at: y.created_at, body: y.body }));
+    if (mine.length) replies[n] = mine;
+  }));
+  return { updated: new Date().toISOString(), closed, replies };
+}

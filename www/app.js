@@ -8,7 +8,7 @@ import {
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
 import { notifyAvailable, ensurePermission, reschedule, LEADS, defaultLeads } from './notify.js';
-import { sendFeedback, postReply, fetchOpenIssues, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
+import { sendFeedback, postReply, fetchOpenIssues, fetchReplies, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -1669,7 +1669,8 @@ async function checkReplies(force = false) {
   if (!force && repliesData && Date.now() - last < 30 * 60000) return;
   try {
     const before = unreadReplies();
-    repliesData = await fetch(`${ISSUES_URL}replies.json?t=${Date.now()}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    const nums = myReports().slice(-10).map((r) => r.n);
+    repliesData = await fetchReplies(nums).catch(() => fetch(`${ISSUES_URL}replies.json?t=${Date.now()}`).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }));
     try { localStorage.setItem(REPLIES_CHECK_KEY, String(Date.now())); localStorage.setItem(REPLIES_CHECK_KEY + '.data', JSON.stringify(repliesData)); } catch (e) { /* */ }
     const now = unreadReplies();
     if (now > before) toast(now === 1 ? 'Twórca apki odpisał na Twoje zgłoszenie — Ustawienia' : `Masz ${now} nowe odpowiedzi na zgłoszenia — Ustawienia`);
