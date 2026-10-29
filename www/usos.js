@@ -94,6 +94,23 @@ export function codePrefix(kod) {
   return (/^[A-Za-zĄ-ż]+/.exec(kod) || [kod])[0];
 }
 
+// Numer semestru z nazwy grupy („… 3 semestr …”, „sem. 3”)
+export function semesterOf(nazwa) {
+  const m = /(\d+)\s*sem/i.exec(nazwa || '') || /sem(?:estr)?\.?\s*(\d+)/i.exec(nazwa || '');
+  return m ? +m[1] : null;
+}
+// Grupy specjalnościowe/obieralne z tego samego kierunku i semestru co główna grupa —
+// na części kierunków USOS trzyma je osobno, więc ich zajęcia nie są w planie „obowiązkowych”.
+export function relatedGroups(groups, main) {
+  const pre = codePrefix(main.kod);
+  const sem = semesterOf(main.nazwa);
+  const niest = /niestacj/i.test(main.nazwa || '');
+  return groups.filter((g) => g.kod !== main.kod && codePrefix(g.kod) === pre
+    && sem != null && semesterOf(g.nazwa) === sem
+    && /niestacj/i.test(g.nazwa || '') === niest
+    && /specjaln|spec\.|obieraln|wybieraln/i.test(g.nazwa || ''));
+}
+
 // Strona grupy -> dostępne cykle (semestry) z planem: [{cdyd, label}]
 export function parseCycles(html) {
   const out = [];

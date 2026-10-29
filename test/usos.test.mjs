@@ -59,3 +59,18 @@ assert.ok(subs.some((x) => x.kod === 'CSKKAu>SM23UBZO25' && /UBZO/.test(x.nazwa)
 const subjWeek = parsePlan(f('subject-week.html'));
 assert.equal(subjWeek.length, 7);
 console.log('OK — USOS:', groups.length, 'grup,', sem.length, 'wpisów sem.,', wk.length, 'w tygodniu');
+
+// grupy specjalnościowe tego samego kierunku i semestru
+{
+  const { relatedGroups, semesterOf } = await import('../www/usos.js');
+  const gs = [
+    { kod: 'IBioAIB>SI-3-25-O', nazwa: 'Przedmioty obowiązkowe 3 semestr stacjonarne Biomedical Engineering_siatka 2025' },
+    { kod: 'IBioAIB>SI-3-25-DBD', nazwa: 'Przedmioty specjalnościowe 3 semestr stacjonarne - DESIGN OF BIOMECHATRONIC DEVICES' },
+    { kod: 'IBioAIB>SI-5-23-BTM', nazwa: 'Przedmioty spec. sem. 5 Biomaterials and tech.for med. 2023' },
+    { kod: 'IB-PUB>SI-3-25-S', nazwa: 'Przedmioty specjalnościowe semestr 3 stacj, I st. Inżynieria Biomedyczna PUB' },
+  ];
+  if (semesterOf(gs[2].nazwa) !== 5 || semesterOf(gs[3].nazwa) !== 3) throw new Error('semesterOf');
+  const r = relatedGroups(gs, gs[0]).map((g) => g.kod);
+  if (JSON.stringify(r) !== JSON.stringify(['IBioAIB>SI-3-25-DBD'])) throw new Error('relatedGroups: ' + r);
+  console.log('OK — grupy specjalnościowe');
+}

@@ -1,6 +1,6 @@
 import { parseICS, classType, diffEvents, normalizeUrl } from './ics.js';
 import {
-  FACULTIES, urls, parseSubjects, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
+  FACULTIES, urls, relatedGroups, parseSubjects, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
   isSelected, toEvent, mondayISO, isoToTs, codePrefix,
 } from './usos.js';
 import {
@@ -267,6 +267,8 @@ async function fetchWeek(plan, iso) {
   const jobs = [fetchPlanText(urls.week(plan.src.kod, plan.src.cdyd, iso)).then(parsePlan)];
   // dodatkowe przedmioty spoza planu kierunku (np. lektorat, UBZO)
   for (const x of plan.extras || []) jobs.push(fetchPlanText(urls.subjectWeek(x.kod, plan.src.cdyd, iso)).then(parsePlan));
+  // dodatkowe grupy przedmiotów (specjalność, obieralne) z tego samego kierunku
+  for (const g of plan.extraGroups || []) jobs.push(fetchPlanText(urls.week(g.kod, g.cdyd || plan.src.cdyd, iso)).then(parsePlan));
   const parts = await Promise.all(jobs);
   const seen = new Set();
   const entries = [];
@@ -1179,6 +1181,26 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   const src = plan ? { ...plan.src } : { jed, kod, prog, nazwa };
   openSheet(`<h3>${esc(src.prog || src.kod)}</h3><div class="empty"><div class="big">⏳</div><p>Pobieram plan…</p></div>`);
   let comps;
+  let mainEntries = [];
+  let xg = (plan?.extraGroups || []).map((g) => ({ ...g }));
+  const xgBefore = JSON.stringify(xg.map((g) => g.kod).sort());
+  const semCache = {};
+  const loadComps = async () => {
+    const all = [...mainEntries];
+    for (const g of xg) {
+      if (!semCache[g.kod]) semCache[g.kod] = parsePlan(await fetchPlanText(urls.semester(g.kod, g.cdyd || src.cdyd)));
+      all.push(...semCache[g.kod]);
+    }
+    return components(all);
+  };
+  let related = [];
+  try {
+    if (!groupCache[src.jed]) {
+      const [gHtml, pHtml] = await Promise.all([fetchPlanText(urls.groups(src.jed)), fetchPlanText(urls.programs(src.jed)).catch(() => '')]);
+      groupCache[src.jed] = { groups: parseGroups(gHtml), programs: parsePrograms(pHtml) };
+    }
+    related = relatedGroups(groupCache[src.jed].groups, src);
+  } catch (e) { /* bez listy grup — po prostu bez propozycji */ }
   try {
     if (!src.cdyd || !plan) {
       const cycles = parseCycles(await fetchPlanText(urls.group(src.jed, src.kod)));
@@ -1186,7 +1208,8 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
       if (!cyc) throw new Error('Ten kierunek nie ma opublikowanego planu w USOS.');
       src.cdyd = cyc.cdyd; src.cycleLabel = cyc.label;
     }
-    comps = components(parsePlan(await fetchPlanText(urls.semester(src.kod, src.cdyd))));
+    mainEntries = parsePlan(await fetchPlanText(urls.semester(src.kod, src.cdyd)));
+    comps = await loadComps();
     if (!comps.length) throw new Error('Plan na ten semestr jest pusty.');
   } catch (e) {
     openSheet(`<h3>${esc(src.prog || src.kod)}</h3><div class="empty"><div class="big">⚠</div><p>${esc(e.message)}</p>
@@ -1195,8 +1218,8 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   }
   if (!sheetOpen) return;
   const sel = { ...(plan?.sel || {}) };
-  const multi = comps.filter((c) => c.groups.length > 1);
-  const types = [...new Set(multi.map((c) => c.typeCode))];
+  let multi = comps.filter((c) => c.groups.length > 1);
+  let types = [...new Set(multi.map((c) => c.typeCode))];
   const maxG = (t) => Math.max(...multi.filter((c) => c.typeCode === t).map((c) => c.groups.length));
   const typeName = (t) => (multi.find((c) => c.typeCode === t) || {}).typeFull || t;
   const semNo = (/(\d+)\s*semestr/.exec(src.nazwa || '') || [])[1];
@@ -1209,9 +1232,18 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   }).join('');
 
   const draw = () => {
+    multi = comps.filter((c) => c.groups.length > 1); types = [...new Set(multi.map((c) => c.typeCode))];
     let html = `<h3>${plan ? 'Edytuj plan' : 'Twoje grupy'}</h3>
       <label class="field"><span>Nazwa planu</span><input id="gsName" maxlength="40" value="${esc($('gsName')?.value ?? defName)}"></label>
       <p class="hint">${esc(src.cycleLabel || src.cdyd)} · wybierz grupę przy zajęciach, które mają kilka grup. Wykłady dodają się same.</p>`;
+    if (related.length) {
+      html += `<div class="list-head">Specjalność i przedmioty obieralne</div>
+        <p class="hint">Na niektórych kierunkach USOS trzyma je w osobnej grupie. Zaznacz swoją, a jej zajęcia trafią do tego planu.</p>`;
+      for (const g of related) {
+        const on = xg.some((x) => x.kod === g.kod);
+        html += `<button type="button" class="xg-item${on ? ' on' : ''}" data-xg="${esc(g.kod)}"><span class="xg-box">${on ? '✓' : ''}</span><span>${esc(g.nazwa)}</span></button>`;
+      }
+    }
     if (types.length) {
       html += '<div class="quick"><div class="list-head">Szybko: ta sama grupa dla wszystkich</div>';
       for (const t of types) {
@@ -1238,6 +1270,27 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   draw();
 
   $('sheet').onclick = async (e) => {
+    const xb = e.target.closest('[data-xg]');
+    if (xb) {
+      e.stopPropagation();
+      if (xb.disabled) return;
+      const k = xb.dataset.xg;
+      const i = xg.findIndex((x) => x.kod === k);
+      xb.disabled = true;
+      try {
+        if (i >= 0) xg.splice(i, 1);
+        else {
+          const g = related.find((x) => x.kod === k);
+          xb.querySelector('.xg-box').textContent = '…';
+          const cyc = pickCycle(parseCycles(await fetchPlanText(urls.group(src.jed, k))));
+          xg.push({ kod: k, nazwa: g.nazwa, cdyd: cyc ? cyc.cdyd : src.cdyd });
+        }
+        comps = await loadComps();
+      } catch (err) { toast(err.message || String(err)); if (i < 0) xg = xg.filter((x) => x.kod !== k); }
+      if (!sheetOpen) return;
+      draw();
+      return;
+    }
     const chip = e.target.closest('.chip');
     if (chip) {
       e.stopPropagation();
@@ -1255,12 +1308,18 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
       target.name = name;
       target.sel = sel;
       target.src = src;
+      target.extraGroups = xg;
+      const xgChanged = JSON.stringify(xg.map((g) => g.kod).sort()) !== xgBefore;
       if (plan) target.events = rebuildUsosEvents(target);
-      else { state.plans.push(target); }
-      state.activeId = target.id;
+      else { state.plans.push(target); state.activeId = target.id; }
       save(); closeSheet(); render();
       if (!plan) refreshActive();
-      else toast('Zapisano');
+      else if (xgChanged) {
+        target.skipDiff = true; target.weeks = {};
+        toast('Zapisano — pobieram zajęcia z wybranych grup…');
+        refreshPlan(target, { quiet: true }).then(() => { save(); render(); toast('Gotowe'); })
+          .catch((err) => { target.error = err.message || String(err); save(); render(); toast(target.error); });
+      } else toast('Zapisano');
     }
   };
 }
