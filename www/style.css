@@ -239,3 +239,12 @@ input { font: inherit; }
   background: var(--bg2); padding: 12px 0 calc(var(--safe-bottom) + 4px); margin-top: 10px;
 }
 .sheet-actions > * { flex: 1; }
+
+/* ustawienia / aktualizacje */
+.icon-btn { position: relative; }
+.icon-btn .dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 4px; background: var(--danger); }
+.upd { background: var(--card); border-radius: 12px; padding: 12px; }
+.upd-text { margin-bottom: 10px; font-size: 14px; }
+.upd-text:empty { display: none; }
+.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }

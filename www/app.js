@@ -3,6 +3,7 @@ import {
   FACULTIES, urls, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
   isSelected, toEvent, mondayISO, isoToTs, codePrefix,
 } from './usos.js';
+import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
 const AUTO_REFRESH_MS = 30 * 60 * 1000;
@@ -590,6 +591,90 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   };
 }
 
+// ---------- ustawienia i aktualizacje ----------
+let update = null; // ostatnio sprawdzona wersja
+let updating = false;
+const UPD_KEY = 'planapp.updCheck';
+
+async function autoCheckUpdate() {
+  if (!hasUpdater()) return;
+  let last = 0;
+  try { last = +localStorage.getItem(UPD_KEY) || 0; } catch (e) { /* */ }
+  if (Date.now() - last < 6 * 3600000) return;
+  try {
+    update = await checkUpdate();
+    try { localStorage.setItem(UPD_KEY, String(Date.now())); } catch (e) { /* */ }
+    $('updDot').hidden = !update.newer;
+    if (update.newer) toast('Jest nowa wersja apki — Ustawienia → Aktualizuj');
+  } catch (e) { /* bez internetu sprawdzimy następnym razem */ }
+}
+
+async function settingsSheet() {
+  const b = await currentBuild();
+  const ver = b.build ? `0.1.${b.build}` : 'wersja deweloperska';
+  const updBox = () => {
+    if (!isNative()) return '<p class="hint">Aktualizacje działają w apce na telefonie.</p>';
+    if (updating) return `<div class="upd"><div class="upd-text" id="updText">Pobieram…</div><div class="bar"><i id="updBar"></i></div></div>`;
+    if (update && update.newer) {
+      return `<div class="upd"><div class="upd-text"><b>Jest nowa wersja 0.1.${update.build}</b></div>
+        <button class="btn block" data-act="do-update">Aktualizuj</button></div>`;
+    }
+    return `<div class="upd"><div class="upd-text" id="updText">${update ? 'Masz najnowszą wersję.' : ''}</div>
+      <button class="btn ghost block" data-act="check-update">Sprawdź aktualizacje</button></div>`;
+  };
+  openSheet(`<h3>Ustawienia</h3>
+    <div class="list-head">Aktualizacje</div>
+    <div id="updBox">${updBox()}</div>
+    <div class="list-head">O apce</div>
+    <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
+    <p class="hint">Wygląd i motywy — wkrótce.</p>`);
+  settingsSheet.redraw = () => { const el = $('updBox'); if (el) el.innerHTML = updBox(); };
+}
+
+async function doCheckUpdate() {
+  const t = $('updText');
+  if (t) t.textContent = 'Sprawdzam…';
+  try {
+    update = await checkUpdate();
+    try { localStorage.setItem(UPD_KEY, String(Date.now())); } catch (e) { /* */ }
+    $('updDot').hidden = !update.newer;
+  } catch (e) {
+    if (t) t.textContent = `Nie udało się sprawdzić: ${e.message || e}`;
+    return;
+  }
+  settingsSheet.redraw?.();
+}
+
+async function doUpdate() {
+  if (!update || updating) return;
+  updating = true; settingsSheet.redraw?.();
+  const text = (s) => { const t = $('updText'); if (t) t.textContent = s; };
+  try {
+    save();
+    const res = await applyUpdate(update, (e) => {
+      if (e.type === 'progress' && e.pct >= 0) {
+        const bar = $('updBar'); if (bar) bar.style.width = `${e.pct}%`;
+        text(`${e.phase === 'apk' ? 'Pobieram nową wersję' : 'Pobieram'}… ${e.pct}%`);
+      }
+      if (e.type === 'status' && e.state === 'confirm') text('Potwierdź instalację w okienku Androida');
+      if (e.type === 'status' && e.state === 'failed') { updating = false; settingsSheet.redraw?.(); toast(`Nie udało się zainstalować${e.message ? ': ' + e.message : ''}`); }
+    });
+    if (res === 'web') text('Gotowe, uruchamiam ponownie…');
+    else if (res === 'apk-silent') text('Instaluję… Apka za chwilę się zamknie — otwórz ją ponownie ikonką.');
+    else if (res === 'apk') text('Instaluję… Potwierdź w okienku Androida.');
+    else if (res === 'need-permission') {
+      updating = false;
+      openSheet(`<h3>Jedno pozwolenie</h3>
+        <p>Android musi pozwolić apce instalować aktualizacje. W ustawieniach włącz <b>„Zezwalaj z tego źródła”</b> i wróć tutaj. To tylko raz.</p>
+        <div class="row"><button class="btn ghost" data-act="install-settings">Otwórz ustawienia</button>
+        <button class="btn" data-act="do-update">Aktualizuj</button></div>`);
+    }
+  } catch (e) {
+    updating = false; settingsSheet.redraw?.();
+    toast(e.message || 'Nie udało się zaktualizować');
+  }
+}
+
 // ---------- zdarzenia ----------
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act], [data-view], [data-day]');
@@ -602,6 +687,9 @@ document.addEventListener('click', (e) => {
     if (p?.kind === 'usos') groupSelectSheet({ plan: p }); else formSheet(p);
     return;
   }
+  if (act === 'check-update') { doCheckUpdate(); return; }
+  if (act === 'do-update') { doUpdate(); return; }
+  if (act === 'install-settings') { openInstallSettings(); return; }
   if (act === 'pick-faculty') { facultySheet(); return; }
   if (act === 'add-link') { formSheet(null); return; }
   if (act === 'faculty') { groupListSheet(el.dataset.kod); return; }
@@ -629,6 +717,7 @@ document.addEventListener('click', (e) => {
 
 $('planSwitch').addEventListener('click', plansSheet);
 $('plansBtn').addEventListener('click', plansSheet);
+$('settingsBtn').addEventListener('click', settingsSheet);
 $('sheetBackdrop').addEventListener('click', () => closeSheet());
 $('refreshBtn').addEventListener('click', () => refreshActive({ manual: true }));
 $('dateLabel').addEventListener('click', () => { selDate = startOfDay(Date.now()); render(); });
@@ -649,10 +738,12 @@ $('content').addEventListener('touchend', (e) => {
 }, { passive: true });
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { render(); maybeAutoRefresh(); }
+  if (!document.hidden) { render(); maybeAutoRefresh(); autoCheckUpdate(); }
 });
 setInterval(() => { if (!document.hidden && !sheetOpen) render(); }, 60000);
 
 // start
 render();
 maybeAutoRefresh();
+markStarted();
+autoCheckUpdate();

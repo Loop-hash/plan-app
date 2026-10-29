@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Plan</string>
+    <string name="title_activity_main">Plan</string>
+    <string name="package_name">pl.loophash.planapp</string>
+    <string name="custom_url_scheme">pl.loophash.planapp</string>
+</resources>
