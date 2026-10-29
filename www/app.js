@@ -1331,7 +1331,6 @@ async function settingsSheet() {
     <div class="list-head">O apce</div>
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.<br>Kod apki jest otwarty (licencja MIT): <a href="https://github.com/Loop-hash/plan-app" target="_blank">github.com/Loop-hash/plan-app</a></div>
     ${isAdmin() ? '<button class="choice" data-act="admin"><b>Panel admina</b><span>Zgłoszenia, agent, log błędów, podgląd powitania</span></button>' : ''}
-    <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny</button>
 `);
   $('setWeekends').addEventListener('change', (e) => { state.settings.weekends = e.target.checked; save(); render(); });
   drawReminderSettings();
@@ -1735,7 +1734,6 @@ document.addEventListener('click', (e) => {
   if (act === 'wl-next') { welcomeStep = Math.min(3, welcomeStep + 1); renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-back') { welcomeStep = Math.max(1, welcomeStep - 1); renderWelcome(); return; }
   if (act === 'wl-link') { if (welcomeStep === 1) { welcomeStep = 2; renderWelcome(); } formSheet(null); return; }
-  if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'admin') { adminSheet(); return; }
   if (act === 'adm-reply') { replySheet(+el.dataset.n, el.dataset.title || ''); return; }
