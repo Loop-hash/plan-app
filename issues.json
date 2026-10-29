@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-29T19:43:51Z",
+  "updated": "2026-10-29T19:47:41Z",
   "issues": [
     {
       "body": "nadal w piatek nie mam labow :(\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.29 (9a03672)\nmotyw: matcha, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
@@ -18,64 +18,6 @@
           "user": "Loop-hash"
         }
       ]
-    },
-    {
-      "body": "nadal nie mam labow w piatek xd\n\n— zz, przez apkę\n\n![zrzut 1](https://raw.githubusercontent.com/Loop-hash/plan-app-feedback/main/img/2026-10-29-x1b5k5bz.jpg)\n![zrzut 2](https://raw.githubusercontent.com/Loop-hash/plan-app-feedback/main/img/2026-10-29-2ccvhxv8.jpg)\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.27 (ee9b30b)\nmotyw: matcha, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
-      "comments": 1,
-      "created_at": "2026-10-29T19:32:13Z",
-      "labels": [],
-      "number": 7,
-      "title": "[Błąd] nadal nie mam labow w piatek xd",
-      "updated_at": "2026-10-29T19:43:06Z",
-      "user": "Loop-hash",
-      "comment_list": [
-        {
-          "body": "i nie będzie xD",
-          "created_at": "2026-10-29T19:43:06Z",
-          "issue": 7,
-          "user": "Loop-hash"
-        }
-      ]
-    },
-    {
-      "body": "w piątki mam laby na biomedical, których apka mi nie sczytuje :c\n\n— zz, przez apkę\n\n![zrzut 1](https://raw.githubusercontent.com/Loop-hash/plan-app-feedback/main/img/2026-10-29-0yeaiyv1.jpg)\n![zrzut 2](https://raw.githubusercontent.com/Loop-hash/plan-app-feedback/main/img/2026-10-29-hcb1q8um.jpg)\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.13 (49c79d0)\nmotyw: klocki, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
-      "comments": 1,
-      "created_at": "2026-10-29T19:11:10Z",
-      "labels": [],
-      "number": 6,
-      "title": "[Błąd] w piątki mam laby na biomedical, których apka mi nie sczytuje :c",
-      "updated_at": "2026-10-29T19:19:28Z",
-      "user": "Loop-hash",
-      "comment_list": [
-        {
-          "body": "odezwał się tester, czego ty się spodziewasz? że będzie śmigało od pierwszych 5 min? po to jest faza testów bruh, kiedyś naprawimy, może",
-          "created_at": "2026-10-29T19:19:28Z",
-          "issue": 6,
-          "user": "Loop-hash"
-        }
-      ]
-    },
-    {
-      "body": "piątkowych labów mi nie widzi :c\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.13 (49c79d0)\nmotyw: klocki, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 0, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
-      "comments": 0,
-      "created_at": "2026-10-29T17:51:45Z",
-      "labels": [],
-      "number": 5,
-      "title": "[Błąd] piątkowych labów mi nie widzi :c",
-      "updated_at": "2026-10-29T17:51:45Z",
-      "user": "Loop-hash",
-      "comment_list": []
-    },
-    {
-      "body": "widget z planem dnia!!\n\n— zz, przez apkę\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.9 (28e1aa6)\nmotyw: klocki, widok: day\nplan: Wszystko razem [merge]\nplanów: 3, edycji: 4, własnych zajęć: 0\ndzień w apce: 2026-10-30\nurządzenie: Mozilla/5.0 (Linux; Android 17; SM-S721B Build/CP2A.260605.016; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0.8078.47 Mobile Safari/537.36\n```\n</details>",
-      "comments": 0,
-      "created_at": "2026-10-29T17:14:12Z",
-      "labels": [],
-      "number": 3,
-      "title": "[Pomysł] widget z planem dnia!!",
-      "updated_at": "2026-10-29T17:14:12Z",
-      "user": "Loop-hash",
-      "comment_list": []
     }
   ]
 }
