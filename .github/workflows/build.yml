@@ -104,10 +104,13 @@ jobs:
             if [ -n "$OLD" ]; then gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$OLD"; fi
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$NEW" -f name="$1" > /dev/null
           }
+          printf '{"build": %s, "native": "%s", "sha": "%s", "apkSize": %s, "webSize": %s}\n' "$GITHUB_RUN_NUMBER" "$NATIVE" "${GITHUB_SHA::7}" "$(stat -c %s Plan.apk)" "$(stat -c %s plan-www.zip)" > version.json
+          cat version.json
           if gh release view latest >/dev/null 2>&1; then
             swap plan-www.zip
             swap Plan.apk
+            swap version.json
             gh release edit latest --title "Plan 0.1.${GITHUB_RUN_NUMBER}" --notes "$NOTES" --latest
           else
-            gh release create latest Plan.apk plan-www.zip --title "Plan 0.1.${GITHUB_RUN_NUMBER}" --notes "$NOTES" --latest
+            gh release create latest Plan.apk plan-www.zip version.json --title "Plan 0.1.${GITHUB_RUN_NUMBER}" --notes "$NOTES" --latest
           fi

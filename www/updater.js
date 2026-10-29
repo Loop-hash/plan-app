@@ -3,6 +3,8 @@
 // Gdy się zmieniła, pobiera całe APK i instaluje je w tle (Android 12+ nie pyta o zgodę).
 
 const RELEASE_API = 'https://api.github.com/repos/Loop-hash/plan-app/releases/tags/latest';
+// Plik z wydania — bez limitu 60 zapytań/h, który ma API (w akademiku wiele telefonów dzieli jedno IP)
+const DL = 'https://github.com/Loop-hash/plan-app/releases/download/latest/';
 export const RELEASE_PAGE = 'https://github.com/Loop-hash/plan-app/releases/latest';
 
 const cap = () => (typeof window !== 'undefined' ? window.Capacitor : null);
@@ -23,6 +25,22 @@ export async function currentBuild() {
 // Informacja o najnowszej wersji z GitHuba albo null (brak internetu itp.)
 export async function checkUpdate() {
   const cur = await currentBuild();
+  try {
+    const r = await fetch(`${DL}version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.ok) {
+      const v = await r.json();
+      if (v && v.build) {
+        return {
+          build: Number(v.build),
+          current: Number(cur.build) || 0,
+          newer: Number(v.build) > (Number(cur.build) || 0),
+          native: v.native || '',
+          apk: { url: `${DL}Plan.apk`, size: Number(v.apkSize) || 0 },
+          web: { url: `${DL}plan-www.zip`, size: Number(v.webSize) || 0 },
+        };
+      }
+    }
+  } catch (e) { /* zapas: API GitHuba */ }
   const r = await fetch(RELEASE_API, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
   if (!r.ok) throw new Error(`GitHub odpowiedział ${r.status}`);
   const rel = await r.json();

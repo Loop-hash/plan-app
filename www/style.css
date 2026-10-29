@@ -267,7 +267,8 @@ input { font: inherit; }
 .theme-tile .sw i { flex: 1; }
 .theme-tile .tn { font-size: 12.5px; font-weight: 600; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border-radius: 12px; padding: 12px; margin-top: 8px; font-size: 14px; }
-.switch-row input { width: 22px; height: 22px; accent-color: var(--accent); }
+.switch-row input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
+.rem-ctl input[type=time] { min-width: 104px; min-height: 40px; }
 
 /* tydzień: siatka dni × godziny */
 .wswitch { display: flex; gap: 4px; background: var(--bg2); border-radius: 10px; padding: 3px; width: max-content; margin: 0 auto 10px; }
