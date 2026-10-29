@@ -1328,7 +1328,7 @@ async function settingsSheet() {
     <div class="list-head">Zgłoszenia</div>
     <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
     <div class="list-head">O apce</div>
-    <div class="help"><span data-act="ver-tap">Plan · ${esc(ver)}</span>${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
+    <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
     ${isAdmin() ? '<button class="choice" data-act="admin"><b>Panel admina</b><span>Zgłoszenia, agent, log błędów, podgląd powitania</span></button>' : ''}
     <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny</button>
 `);
@@ -1595,17 +1595,7 @@ async function finishWelcome() {
 const ADMIN_KEY = 'planapp.admin';
 const ISSUES_URL = 'https://raw.githubusercontent.com/Loop-hash/plan-app/zgloszenia/';
 function isAdmin() { try { return localStorage.getItem(ADMIN_KEY) === '1'; } catch (e) { return false; } }
-// ODBLOKOWANIE — do usunięcia w następnej wersji (flaga zostaje na telefonie)
-let adminTaps = [];
-function adminTap() {
-  if (isAdmin()) { toast('Tryb admina jest już włączony'); return; }
-  const now = Date.now();
-  adminTaps = adminTaps.filter((t) => now - t < 3000).concat(now);
-  if (adminTaps.length >= 7) {
-    try { localStorage.setItem(ADMIN_KEY, '1'); } catch (e) { toast('Nie udało się zapisać'); return; }
-    adminTaps = []; toast('Tryb admina włączony'); settingsSheet();
-  } else if (adminTaps.length >= 4) toast(`Jeszcze ${7 - adminTaps.length}…`);
-}
+// Odblokowanie było tylko w jednej wersji — nowych adminów się nie dodaje.
 
 async function adminRefreshAll() {
   const list = state.plans.filter((p) => p.kind !== 'merge');
@@ -1677,7 +1667,6 @@ document.addEventListener('click', (e) => {
   if (act === 'wl-link') { if (welcomeStep === 1) { welcomeStep = 2; renderWelcome(); } formSheet(null); return; }
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
-  if (act === 'ver-tap') { adminTap(); return; } // ODBLOKOWANIE — do usunięcia w następnej wersji
   if (act === 'admin') { adminSheet(); return; }
   if (act === 'adm-refresh') { adminRefreshAll(); return; }
   if (act === 'adm-update') { try { localStorage.removeItem(UPD_KEY); } catch (e2) { /* */ } closeSheet(); settingsSheet().then(() => doCheckUpdate()); return; }
