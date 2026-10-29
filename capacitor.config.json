@@ -3,7 +3,13 @@
   "appName": "Plan",
   "webDir": "www",
   "plugins": {
-    "CapacitorHttp": { "enabled": true }
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_plan",
+      "iconColor": "#7aa2ff"
+    }
   },
   "android": {
     "allowMixedContent": false

@@ -366,3 +366,6 @@ body.editing .toast { bottom: calc(var(--safe-bottom) + 150px); }
 .exam-banner { display: block; width: 100%; text-align: left; background: color-mix(in srgb, var(--egz) 18%, var(--card)); color: var(--text); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px; border: 1px solid color-mix(in srgb, var(--egz) 45%, transparent); }
 .exam-banner b { color: var(--egz); }
 .sheet .exam-banner { margin-top: 8px; margin-bottom: 0; }
+
+.rem-ctl { display: flex; align-items: center; gap: 10px; }
+.rem-ctl input[type=time], .rem-ctl select { background: var(--card2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; }

@@ -4,12 +4,13 @@
   "private": true,
   "description": "Plan zajęć Politechniki Śląskiej z USOS — Android",
   "scripts": {
-    "test": "node test/ics.test.mjs && node test/usos.test.mjs && node test/edits.test.mjs",
+    "test": "node test/ics.test.mjs && node test/usos.test.mjs && node test/edits.test.mjs && node test/notify.test.mjs",
     "serve": "cd www && python3 -m http.server 8123"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
-    "@capacitor/core": "^8.6.0"
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/local-notifications": "^8.3.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0"

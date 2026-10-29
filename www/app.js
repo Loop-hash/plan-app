@@ -7,6 +7,7 @@ import {
   TYPES, typeByKey, SOURCE_COLORS, emptyEdits, hasEdits, applyEdits, makePatch, occKey, seriesKey,
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
+import { notifyAvailable, ensurePermission, reschedule } from './notify.js';
 import { sendFeedback, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
@@ -15,6 +16,7 @@ const AUTO_REFRESH_MS = 30 * 60 * 1000;
 const DAY = 86400000;
 
 // ---------- stan ----------
+const DEFAULT_REMINDERS = { enabled: true, dayBefore: true, dayBeforeMin: 19 * 60, before: true, beforeMin: 120, morningMin: 7 * 60 + 30 };
 let state = load();
 let selDate = startOfDay(Date.now());
 let refreshing = false;
@@ -22,9 +24,9 @@ let refreshing = false;
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (s && Array.isArray(s.plans)) return { view: 'day', ...s, settings: { theme: 'blueprint', weekends: false, ...(s.settings || {}) } };
+    if (s && Array.isArray(s.plans)) return { view: 'day', ...s, settings: { theme: 'blueprint', weekends: false, ...(s.settings || {}), reminders: { ...DEFAULT_REMINDERS, ...((s.settings || {}).reminders || {}) } } };
   } catch (e) { /* brak/uszkodzone dane */ }
-  return { plans: [], activeId: null, view: 'day', settings: { theme: 'blueprint', weekends: false } };
+  return { plans: [], activeId: null, view: 'day', settings: { theme: 'blueprint', weekends: false, reminders: { ...DEFAULT_REMINDERS } } };
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -142,6 +144,7 @@ function examSheet(x, presetSubject) {
       </div>
       <label class="field"><span>Sala</span><input name="location" maxlength="60" value="${esc(x?.location || '')}"></label>
       <label class="field"><span>Notatka (zakres, co przynieść…)</span><textarea name="note" rows="3" maxlength="500">${esc(x?.note || '')}</textarea></label>
+      ${notifyAvailable() ? `<label class="switch-row"><span>Przypomnij mi o tym${state.settings.reminders.enabled ? '' : ' (przypomnienia są wyłączone w Ustawieniach)'}</span><input type="checkbox" name="remind"${x?.remind === false ? '' : ' checked'}></label>` : ''}
       <div class="err-box" id="exErr" hidden></div>
       <div class="sheet-actions"><button type="submit" class="btn">${isNew ? 'Dodaj' : 'Zapisz'}</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
       ${isNew ? '' : '<button type="button" class="btn danger block" id="exDel" style="margin-top:8px">Usuń</button>'}
@@ -156,17 +159,28 @@ function examSheet(x, presetSubject) {
     const err = $('exErr');
     if (!subject) { err.textContent = 'Podaj przedmiot.'; err.hidden = false; return; }
     if (startMin != null && endMin != null && endMin <= startMin) { err.textContent = 'Koniec musi być po początku.'; err.hidden = false; return; }
-    const data = { subject, kind: f.kind.value, date: f.date.value, startMin, endMin: startMin != null ? endMin : null, location: f.location.value.trim(), note: f.note.value.trim() };
+    const data = { subject, kind: f.kind.value, date: f.date.value, startMin, endMin: startMin != null ? endMin : null, location: f.location.value.trim(), note: f.note.value.trim(), remind: f.remind ? f.remind.checked : true };
     state.exams = state.exams || [];
     if (isNew) state.exams.push({ id: uid(), ...data }); else Object.assign(x, data);
-    save(); closeSheet(); render();
+    save(); closeSheet(); render(); syncReminders(true);
     toast(isNew ? `Dodano: ${examKindLabel(data.kind)} ${daysTo(dateTs(data.date))}` : 'Zapisano');
   });
   $('exDel')?.addEventListener('click', (e) => {
     if (e.target.dataset.confirm !== '1') { e.target.dataset.confirm = '1'; e.target.textContent = 'Na pewno usunąć?'; return; }
     state.exams = state.exams.filter((y) => y.id !== x.id);
-    save(); closeSheet(); render(); toast('Usunięto');
+    save(); closeSheet(); render(); syncReminders(); toast('Usunięto');
   });
+}
+// przypomnienia (powiadomienia Androida) — planowane od nowa po każdej zmianie
+async function syncReminders(ask = false) {
+  if (!notifyAvailable()) return;
+  try {
+    if (ask && state.settings.reminders.enabled && (state.exams || []).length) {
+      const ok = await ensurePermission(true);
+      if (!ok) toast('Bez zgody na powiadomienia nie przypomnę o egzaminie — włączysz ją w Ustawieniach');
+    }
+    await reschedule(state.exams || [], state.settings.reminders, examKindLabel);
+  } catch (e) { logError(`przypomnienia: ${e.message || e}`); }
 }
 // pasek z najbliższym egzaminem (do 7 dni) nad planem dnia
 function examBanner() {
@@ -1297,6 +1311,8 @@ async function settingsSheet() {
     <div class="theme-grid">${themes}</div>
     <label class="switch-row"><span>Pokazuj weekendy w widoku tygodnia</span>
       <input type="checkbox" id="setWeekends" ${state.settings?.weekends ? 'checked' : ''}></label>
+    <div class="list-head">Przypomnienia o egzaminach</div>
+    <div id="remBox"></div>
     <div class="list-head">Aktualizacje</div>
     <div id="updBox">${updBox()}</div>
     <div class="list-head">Zgłoszenia</div>
@@ -1305,7 +1321,31 @@ async function settingsSheet() {
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
 `);
   $('setWeekends').addEventListener('change', (e) => { state.settings.weekends = e.target.checked; save(); render(); });
+  drawReminderSettings();
   settingsSheet.redraw = () => { const el = $('updBox'); if (el) el.innerHTML = updBox(); };
+}
+
+async function drawReminderSettings() {
+  const box = $('remBox');
+  if (!box) return;
+  if (!notifyAvailable()) { box.innerHTML = '<p class="hint">Przypomnienia działają w apce na telefonie.</p>'; return; }
+  const R = state.settings.reminders;
+  const perm = await ensurePermission(false);
+  const leadOpts = [[30, '30 min'], [60, '1 h'], [120, '2 h'], [180, '3 h'], [1440 / 2, 'rano (bez godziny)']];
+  box.innerHTML = `
+    <label class="switch-row"><span>Przypominaj o egzaminach i kolokwiach</span><input type="checkbox" id="remOn"${R.enabled ? ' checked' : ''}></label>
+    ${R.enabled ? `
+    <label class="switch-row"><span>Dzień wcześniej o</span><span class="rem-ctl"><input type="time" id="remDayT" step="300" value="${fmtMin(R.dayBeforeMin)}"><input type="checkbox" id="remDay"${R.dayBefore ? ' checked' : ''}></span></label>
+    <label class="switch-row"><span>W dniu egzaminu, przed startem</span><span class="rem-ctl"><select id="remLead">${leadOpts.slice(0, 4).map(([v, l]) => `<option value="${v}"${R.beforeMin === v ? ' selected' : ''}>${l}</option>`).join('')}</select><input type="checkbox" id="remBefore"${R.before ? ' checked' : ''}></span></label>
+    <p class="hint">Egzaminy bez godziny: przypomnienie rano o ${fmtMin(R.morningMin)}.</p>
+    ${perm ? '' : '<button class="btn block" id="remPerm">Zezwól na powiadomienia</button>'}` : ''}`;
+  const upd = (fn) => { fn(); save(); syncReminders(); drawReminderSettings(); };
+  $('remOn').addEventListener('change', (e) => upd(() => { R.enabled = e.target.checked; }));
+  $('remDay')?.addEventListener('change', (e) => upd(() => { R.dayBefore = e.target.checked; }));
+  $('remBefore')?.addEventListener('change', (e) => upd(() => { R.before = e.target.checked; }));
+  $('remDayT')?.addEventListener('change', (e) => { const m = parseMin(e.target.value); if (m != null) upd(() => { R.dayBeforeMin = m; }); });
+  $('remLead')?.addEventListener('change', (e) => upd(() => { R.beforeMin = +e.target.value; }));
+  $('remPerm')?.addEventListener('click', async () => { const ok = await ensurePermission(true); if (ok) { syncReminders(); drawReminderSettings(); } else toast('Android nie dał zgody — włącz powiadomienia dla apki Plan w ustawieniach telefonu'); });
 }
 
 async function doCheckUpdate() {
@@ -1542,3 +1582,4 @@ render();
 maybeAutoRefresh();
 markStarted();
 autoCheckUpdate();
+syncReminders();
