@@ -36,7 +36,11 @@ jobs:
         run: npm ci && npm test
 
       - name: Numer wersji i paczka ze stroną
+        env:
+          FEEDBACK_TOKEN: ${{ secrets.FEEDBACK_TOKEN }}
         run: |
+          # klucz do zgłoszeń (tylko Issues tego repo) trafia do apki dopiero przy budowaniu
+          if [ -n "$FEEDBACK_TOKEN" ]; then printf "export const FEEDBACK_TOKEN = '%s';\n" "$FEEDBACK_TOKEN" > www/config.js; echo "klucz do zgłoszeń: jest"; else echo "klucz do zgłoszeń: brak"; fi
           NATIVE=$(git ls-files android package.json package-lock.json capacitor.config.json | sort | xargs sha256sum | sha256sum | cut -c1-12)
           printf '{"build": %s, "sha": "%s", "date": "%s", "native": "%s"}\n' "$GITHUB_RUN_NUMBER" "${GITHUB_SHA::7}" "$(date -u +%Y-%m-%dT%H:%MZ)" "$NATIVE" > www/build.json
           cat www/build.json

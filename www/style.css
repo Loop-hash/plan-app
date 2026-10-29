@@ -341,3 +341,6 @@ body.editing .wg-ev { touch-action: none; outline: 1px dashed var(--muted); outl
 .wg-ev.narrow { padding: 3px 2px; }
 .wg-ev.narrow b { font-size: 10.5px; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
 body.editing .toast { bottom: calc(var(--safe-bottom) + 150px); }
+
+.field textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; outline: none; resize: vertical; box-sizing: border-box; }
+.fb-kind { margin-bottom: 12px; }

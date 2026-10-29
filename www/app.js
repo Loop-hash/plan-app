@@ -7,6 +7,7 @@ import {
   TYPES, typeByKey, SOURCE_COLORS, emptyEdits, hasEdits, applyEdits, makePatch, occKey, seriesKey,
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
+import { sendFeedback, canSendDirect, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -217,6 +218,7 @@ async function refreshActive({ manual = false } = {}) {
     if (manual && !changed) toast('Plan odświeżony — bez zmian');
   } catch (e) {
     plan.error = e.message || String(e);
+    logError(`odświeżanie ${plan.kind || 'ical'}: ${plan.error}`);
     if (manual) toast(plan.error);
   } finally {
     refreshing = false; save(); render();
@@ -1098,6 +1100,8 @@ async function settingsSheet() {
       <input type="checkbox" id="setWeekends" ${state.settings?.weekends ? 'checked' : ''}></label>
     <div class="list-head">Aktualizacje</div>
     <div id="updBox">${updBox()}</div>
+    <div class="list-head">Zgłoszenia</div>
+    <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
     <div class="list-head">O apce</div>
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
 `);
@@ -1149,6 +1153,55 @@ async function doUpdate() {
   }
 }
 
+// ---------- zgłoszenia ----------
+async function feedbackSheet() {
+  const b = await currentBuild();
+  let kind = 'bug';
+  openSheet(`<h3>Zgłoś błąd albo pomysł</h3>
+    <form id="fbForm" autocomplete="off">
+      <div class="wswitch fb-kind"><button type="button" class="on" data-k="bug">Coś nie działa</button><button type="button" data-k="idea">Mam pomysł</button></div>
+      <label class="field"><span id="fbLabel">Co się stało? Gdzie i kiedy?</span><textarea name="text" rows="5" required maxlength="4000" placeholder="np. W widoku tygodnia nie widać wtorkowego labu…"></textarea></label>
+      <label class="field"><span>Podpis (opcjonalnie)</span><input name="who" maxlength="40" placeholder="imię albo nick"></label>
+      <label class="switch-row"><span>Dołącz informacje techniczne (wersja, motyw, plan, ostatnie błędy)</span><input type="checkbox" name="diag" checked></label>
+      <div class="err-box" id="fbErr" hidden></div>
+      <div class="sheet-actions"><button type="submit" class="btn" id="fbSend">Wyślij</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
+    </form>`);
+  const f = $('fbForm');
+  f.querySelector('.fb-kind').addEventListener('click', (e) => {
+    const k = e.target.closest('[data-k]'); if (!k) return;
+    e.stopPropagation();
+    kind = k.dataset.k;
+    f.querySelectorAll('.fb-kind button').forEach((x) => x.classList.toggle('on', x === k));
+    $('fbLabel').textContent = kind === 'bug' ? 'Co się stało? Gdzie i kiedy?' : 'Co by się przydało?';
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = f.text.value.trim();
+    if (text.length < 5) return;
+    const plan = activePlan();
+    const diag = f.diag.checked ? [
+      `wersja: 0.1.${b.build || '?'} (${b.sha || 'dev'})`,
+      `motyw: ${state.settings?.theme}, widok: ${state.view}${state.view === 'week' ? '/' + (state.settings?.weekStyle || 'grid') : ''}`,
+      `plan: ${plan ? `${plan.name} [${plan.kind || 'ical'}]${plan.src ? ` ${plan.src.kod} ${plan.src.cdyd}` : ''}` : 'brak'}`,
+      `planów: ${state.plans.length}, edycji: ${plan?.edits ? Object.keys(plan.edits.occ || {}).length + Object.keys(plan.edits.series || {}).length : 0}, własnych zajęć: ${plan?.edits?.custom?.length || 0}`,
+      `dzień w apce: ${isoDate(selDate)}`,
+      `urządzenie: ${navigator.userAgent}`,
+      ...(recentErrors().length ? ['ostatnie błędy:', ...recentErrors()] : []),
+    ].join('\n') : '';
+    $('fbSend').disabled = true; $('fbSend').textContent = 'Wysyłam…';
+    try {
+      const r = await sendFeedback({ kind, text, who: f.who.value, diag });
+      closeSheet();
+      if (r.browser) { window.open(r.url, '_blank'); toast('Dokończ zgłoszenie na GitHubie'); }
+      else toast(`Dzięki! Zgłoszenie #${r.number} wysłane`);
+    } catch (err) {
+      logError(`feedback: ${err.message}`);
+      $('fbErr').textContent = `Nie udało się wysłać: ${err.message}. Sprawdź internet i spróbuj jeszcze raz.`;
+      $('fbErr').hidden = false; $('fbSend').disabled = false; $('fbSend').textContent = 'Wyślij';
+    }
+  });
+}
+
 // ---------- zdarzenia ----------
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act], [data-view], [data-day]');
@@ -1192,6 +1245,7 @@ document.addEventListener('click', (e) => {
     el.classList.toggle('open'); return;
   }
   if (act === 'merge') { mergeSheet(null); return; }
+  if (act === 'feedback') { feedbackSheet(); return; }
   if (act === 'ev-edit') { const ev = reg[+el.dataset.i]; if (ev) editSheet(ev); return; }
   if (act === 'add-plain') { addChooserSheet(); return; }
   if (act === 'edit-add') { editSheet(null); return; }
