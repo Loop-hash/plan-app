@@ -1329,6 +1329,7 @@ async function settingsSheet() {
     <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
     <div class="list-head">O apce</div>
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
+    <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny</button>
 `);
   $('setWeekends').addEventListener('change', (e) => { state.settings.weekends = e.target.checked; save(); render(); });
   drawReminderSettings();
@@ -1610,6 +1611,7 @@ document.addEventListener('click', (e) => {
   if (act === 'wl-next') { welcomeStep = Math.min(3, welcomeStep + 1); renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-back') { welcomeStep = Math.max(1, welcomeStep - 1); renderWelcome(); return; }
   if (act === 'wl-link') { if (welcomeStep === 1) { welcomeStep = 2; renderWelcome(); } formSheet(null); return; }
+  if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
   if (act === 'wl-done') { finishWelcome(); return; }
   if (act === 'check-update') { doCheckUpdate(); return; }
   if (act === 'do-update') { doUpdate(); return; }
