@@ -71,7 +71,108 @@ function computeEvents(plan, depth = 0) {
     });
     base.sort((a, b) => a.start - b.start || a.end - b.end);
   } else base = plan.events || [];
-  return applyEdits(base, plan.edits, { showHidden: editMode && depth === 0 });
+  const out = applyEdits(base, plan.edits, { showHidden: editMode && depth === 0 });
+  if (depth === 0 && (state.exams || []).length) {
+    for (const x of state.exams) out.push(examEvent(x));
+    out.sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+  return out;
+}
+// ---------- egzaminy ----------
+const EXAM_KINDS = [['egzamin', 'Egzamin'], ['kolokwium', 'Kolokwium'], ['zaliczenie', 'Zaliczenie'], ['projekt', 'Oddanie projektu'], ['inne', 'Inne']];
+const examKindLabel = (k) => (EXAM_KINDS.find((x) => x[0] === k) || EXAM_KINDS[0])[1];
+function examEvent(x) {
+  const day = dateTs(x.date);
+  const timed = x.startMin != null;
+  const start = timed ? day + 0 : day;
+  const d = new Date(day);
+  const st = timed ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor(x.startMin / 60), x.startMin % 60).getTime() : day;
+  const en = timed ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.floor((x.endMin ?? x.startMin + 90) / 60), (x.endMin ?? x.startMin + 90) % 60).getTime() : addDays(day, 1);
+  return {
+    uid: `exam-${x.id}`, exam: true, examId: x.id, summary: `${examKindLabel(x.kind)}: ${x.subject}`,
+    location: x.location || '', description: x.note || '', allDay: !timed, start: timed ? st : start, end: en, typeKey: 'egz',
+  };
+}
+const upcomingExams = () => (state.exams || []).map((x) => ({ x, ts: dateTs(x.date) })).filter((o) => o.ts >= startOfDay(Date.now())).sort((a, b) => a.ts - b.ts);
+function daysTo(ts) {
+  const n = Math.round((startOfDay(ts) - startOfDay(Date.now())) / DAY);
+  return n === 0 ? 'dziś' : n === 1 ? 'jutro' : n === 2 ? 'pojutrze' : `za ${n} dni`;
+}
+function planSubjects(plan) {
+  const set = new Map();
+  for (const e of viewEvents(plan)) {
+    if (e.exam) continue;
+    const t = splitTitle(e).title;
+    if (!set.has(t)) set.set(t, true);
+  }
+  return [...set.keys()].sort((a, b) => a.localeCompare(b, 'pl'));
+}
+function examsView() {
+  const now = startOfDay(Date.now());
+  const list = [...(state.exams || [])].sort((a, b) => a.date.localeCompare(b.date) || (a.startMin ?? 0) - (b.startMin ?? 0));
+  const up = list.filter((x) => dateTs(x.date) >= now);
+  const past = list.filter((x) => dateTs(x.date) < now);
+  const row = (x, pastRow) => `<button class="exam${pastRow ? ' past' : ''}" data-act="exam-edit" data-id="${x.id}">
+      <div class="ex-when"><b>${esc(pastRow ? fmtShort(dateTs(x.date)) : daysTo(dateTs(x.date)))}</b><small>${esc(cap(fmtDay(dateTs(x.date))))}${x.startMin != null ? `, ${fmtMin(x.startMin)}` : ''}</small></div>
+      <div class="ex-main"><div class="ex-kind">${esc(examKindLabel(x.kind))}</div><div class="ex-subj">${esc(x.subject)}</div>${x.location || x.note ? `<div class="ex-note">${esc([x.location, x.note].filter(Boolean).join(' · '))}</div>` : ''}</div>
+    </button>`;
+  let html = `<button class="btn block" data-act="exam-add" style="margin-bottom:12px">+ Dodaj egzamin / kolokwium</button>`;
+  if (!list.length) html += '<div class="empty"><div class="big">🎓</div><h2>Brak egzaminów</h2><p>Dodaj egzamin, kolokwium albo termin oddania projektu — apka pokaże odliczanie i wstawi go do planu.</p></div>';
+  html += up.map((x) => row(x, false)).join('');
+  if (past.length) html += `<div class="list-head">Minione</div>${past.slice(-10).reverse().map((x) => row(x, true)).join('')}`;
+  return html;
+}
+function examSheet(x, presetSubject) {
+  const plan = activePlan();
+  const isNew = !x;
+  const subjects = plan ? planSubjects(plan) : [];
+  const cur = x ? x.subject : presetSubject || '';
+  const inList = subjects.includes(cur);
+  openSheet(`<h3>${isNew ? 'Nowy egzamin' : 'Edytuj egzamin'}</h3>
+    <form id="exForm" autocomplete="off">
+      <label class="field"><span>Przedmiot</span><select name="subjSel">
+        ${subjects.map((t) => `<option${t === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+        <option value="__inny"${cur && !inList ? ' selected' : ''}${!subjects.length ? ' selected' : ''}>Inny…</option></select></label>
+      <label class="field" id="exOther"${cur && !inList || !subjects.length ? '' : ' hidden'}><span>Nazwa przedmiotu</span><input name="subjOther" maxlength="80" value="${esc(inList ? '' : cur)}"></label>
+      <label class="field"><span>Rodzaj</span><select name="kind">${EXAM_KINDS.map(([k, l]) => `<option value="${k}"${(x?.kind || 'egzamin') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field"><span>Dzień</span><input type="date" name="date" required value="${x ? x.date : isoDate(selDate)}"></label>
+      <div class="row">
+        <label class="field"><span>Od (opcjonalnie)</span><input type="time" name="start" step="300" value="${x && x.startMin != null ? fmtMin(x.startMin) : ''}"></label>
+        <label class="field"><span>Do</span><input type="time" name="end" step="300" value="${x && x.endMin != null ? fmtMin(x.endMin) : ''}"></label>
+      </div>
+      <label class="field"><span>Sala</span><input name="location" maxlength="60" value="${esc(x?.location || '')}"></label>
+      <label class="field"><span>Notatka (zakres, co przynieść…)</span><textarea name="note" rows="3" maxlength="500">${esc(x?.note || '')}</textarea></label>
+      <div class="err-box" id="exErr" hidden></div>
+      <div class="sheet-actions"><button type="submit" class="btn">${isNew ? 'Dodaj' : 'Zapisz'}</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
+      ${isNew ? '' : '<button type="button" class="btn danger block" id="exDel" style="margin-top:8px">Usuń</button>'}
+    </form>`);
+  const f = $('exForm');
+  f.subjSel.addEventListener('change', () => { $('exOther').hidden = f.subjSel.value !== '__inny'; });
+  f.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const subject = (f.subjSel.value === '__inny' ? f.subjOther.value : f.subjSel.value).trim();
+    const startMin = parseMin(f.start.value);
+    const endMin = parseMin(f.end.value);
+    const err = $('exErr');
+    if (!subject) { err.textContent = 'Podaj przedmiot.'; err.hidden = false; return; }
+    if (startMin != null && endMin != null && endMin <= startMin) { err.textContent = 'Koniec musi być po początku.'; err.hidden = false; return; }
+    const data = { subject, kind: f.kind.value, date: f.date.value, startMin, endMin: startMin != null ? endMin : null, location: f.location.value.trim(), note: f.note.value.trim() };
+    state.exams = state.exams || [];
+    if (isNew) state.exams.push({ id: uid(), ...data }); else Object.assign(x, data);
+    save(); closeSheet(); render();
+    toast(isNew ? `Dodano: ${examKindLabel(data.kind)} ${daysTo(dateTs(data.date))}` : 'Zapisano');
+  });
+  $('exDel')?.addEventListener('click', (e) => {
+    if (e.target.dataset.confirm !== '1') { e.target.dataset.confirm = '1'; e.target.textContent = 'Na pewno usunąć?'; return; }
+    state.exams = state.exams.filter((y) => y.id !== x.id);
+    save(); closeSheet(); render(); toast('Usunięto');
+  });
+}
+// pasek z najbliższym egzaminem (do 7 dni) nad planem dnia
+function examBanner() {
+  const next = upcomingExams()[0];
+  if (!next || next.ts - startOfDay(Date.now()) > 7 * DAY) return '';
+  return `<button class="exam-banner" data-act="exam-edit" data-id="${next.x.id}"><b>${esc(cap(daysTo(next.ts)))}</b> · ${esc(examKindLabel(next.x.kind))}: ${esc(next.x.subject)}${next.x.startMin != null ? `, ${fmtMin(next.x.startMin)}` : ''}</button>`;
 }
 function viewEvents(plan) {
   if (!plan) return [];
@@ -266,7 +367,9 @@ function renderTop() {
   else st.textContent = '';
 
   const hasPlan = !!plan;
-  $('navRow').hidden = !hasPlan || state.view === 'changes';
+  $('navRow').hidden = !hasPlan || state.view === 'changes' || state.view === 'exams';
+  const exN = upcomingExams().filter((o) => o.ts - startOfDay(Date.now()) <= 7 * DAY).length;
+  $('examsBadge').hidden = !exN; $('examsBadge').textContent = exN;
   $('tabs').hidden = !hasPlan;
   $('weekStrip').hidden = !hasPlan || state.view !== 'day';
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.view === state.view));
@@ -311,7 +414,7 @@ function renderContent() {
       : `<div class="empty"><div class="big">⏳</div><h2>Pobieranie planu…</h2></div>`;
     return;
   }
-  if (plan.kind === 'usos' && state.view !== 'changes' && !(plan.weeks && plan.weeks[mondayISO(selDate)])) {
+  if (plan.kind === 'usos' && state.view !== 'changes' && state.view !== 'exams' && !(plan.weeks && plan.weeks[mondayISO(selDate)])) {
     const failed = Date.now() - (weekFailed.get(mondayISO(selDate)) || 0) < 60000;
     c.innerHTML = failed
       ? `<div class="empty"><div class="big">⚠</div><h2>Nie udało się pobrać tego tygodnia</h2><p>Sprawdź internet i spróbuj za chwilę.</p></div>`
@@ -320,7 +423,8 @@ function renderContent() {
   }
   if (state.view === 'week') c.innerHTML = weekSwitch() + ((state.settings?.weekStyle || 'grid') === 'grid' ? weekGrid(plan) : weekView(plan));
   else if (state.view === 'changes') c.innerHTML = changesView(plan);
-  else c.innerHTML = dayView(plan);
+  else if (state.view === 'exams') c.innerHTML = examsView();
+  else c.innerHTML = examBanner() + dayView(plan);
 }
 
 function emptyNoPlans() {
@@ -464,7 +568,7 @@ function weekGrid(plan) {
       const room = (e.location || '').split(' · ')[0];
       const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}${e.hidden ? ' hidden-ev' : ''}${e.edited || e.custom ? ' edited' : ''}${e.srcColor ? ' src' : ''}${n > 1 ? ' narrow' : ''}`;
       blocks += `<button class="${cls}" data-act="ev" data-i="${idx}" data-col="${col}" style="--c: ${colorOf(e, type)}; --s: ${e.srcColor || 'transparent'}; top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
-        <b>${esc(abbrev(title))}</b>${h > 40 && n < 3 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
+        <b>${e.exam ? '⚑ ' + esc(abbrev(title.replace(/^[^:]+:\s*/, ''))) : esc(abbrev(title))}</b>${h > 40 && n < 3 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
     }
     let nowLine = '';
     if (d === today) {
@@ -490,10 +594,14 @@ function weekGrid(plan) {
   </div>`;
 }
 function eventSheet(e) {
+  if (e.exam) { examSheet((state.exams || []).find((x) => x.id === e.examId)); return; }
   const { title } = splitTitle(e);
   cardNo = 0;
+  const exs = upcomingExams().filter((o) => o.x.subject === title);
   openSheet(`<h3>${esc(title)}</h3><p class="hint">${esc(cap(fmtDay(e.start)))}</p>
     <div class="sheet-card">${eventCard(e, Date.now()).replace('class="card', 'class="card open')}</div>
+    ${exs.map((o) => `<button class="exam-banner" data-act="exam-edit" data-id="${o.x.id}"><b>${esc(cap(daysTo(o.ts)))}</b> · ${esc(examKindLabel(o.x.kind))}${o.x.startMin != null ? `, ${fmtMin(o.x.startMin)}` : ''}</button>`).join('')}
+    <button class="btn ghost block" data-act="exam-add" data-subject="${esc(title)}" style="margin-top:8px">+ Egzamin / kolokwium z tego przedmiotu</button>
     <div class="row" style="margin-top:8px"><button class="btn ghost" data-act="goto" data-day="${startOfDay(e.start)}">Pokaż ten dzień</button>
     <button class="btn ghost" data-act="ev-edit" data-i="${reg.indexOf(e)}">Edytuj</button></div>`);
 }
@@ -904,6 +1012,7 @@ document.addEventListener('pointerup', (e) => {
   d.el.classList.remove('dragging');
   const ev = reg[d.id];
   if (!ev) return;
+  if (ev.exam) { eventSheet(ev); return; }
   if (!d.moved) { editSheet(ev); return; }
   d.el.style.transform = '';
   if (!d.dCol && !d.dMin) return;
@@ -1367,11 +1476,15 @@ document.addEventListener('click', (e) => {
   }
   if (act === 'refresh') { refreshActive({ manual: true }); return; }
   if (act === 'toggle') {
-    if (editMode && reg[+el.dataset.i]) { editSheet(reg[+el.dataset.i]); return; }
+    const rev = reg[+el.dataset.i];
+    if (rev && rev.exam) { eventSheet(rev); return; }
+    if (editMode && rev) { editSheet(rev); return; }
     el.classList.toggle('open'); return;
   }
   if (act === 'merge') { mergeSheet(null); return; }
   if (act === 'feedback') { feedbackSheet(); return; }
+  if (act === 'exam-add') { examSheet(null, el.dataset.subject); return; }
+  if (act === 'exam-edit') { const x = (state.exams || []).find((y) => y.id === el.dataset.id); if (x) examSheet(x); return; }
   if (act === 'ev-edit') { const ev = reg[+el.dataset.i]; if (ev) editSheet(ev); return; }
   if (act === 'add-plain') { addChooserSheet(); return; }
   if (act === 'edit-add') { addChoiceSheet(); return; }

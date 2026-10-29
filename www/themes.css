@@ -398,3 +398,25 @@
 [data-theme="matcha"] :is(.radio-row, .merge-row) { background: #eef5e6; border: 1.5px solid #2f5427; border-radius: 18px; }
 [data-theme="matcha"] .field select { background: #fff; color: #2f5427; border: 1.5px solid #2f5427; border-radius: 18px; }
 [data-theme="matcha"] .ed-tag { color: #b33a57; }
+
+/* --- egzaminy w motywach --- */
+[data-theme="blueprint"] :is(.exam, .exam-banner) { background: rgba(255,255,255,.06); border: 1px solid #fff; border-radius: 0; color: #fff; }
+[data-theme="blueprint"] .exam { border-left-width: 4px; }
+[data-theme="blueprint"] :is(.ex-when b, .exam-banner b) { color: #fff; text-decoration: underline; }
+[data-theme="blueprint"] .ex-kind { color: rgba(255,255,255,.8); letter-spacing: .12em; }
+[data-theme="klocki"] .exam { background: #ff9a9a; border: 2px solid #111; border-radius: 20px; }
+[data-theme="klocki"] .exam-banner { background: #ff9a9a; border: 2px solid #111; border-radius: 16px; color: #111; }
+[data-theme="klocki"] :is(.ex-when b, .exam-banner b) { color: #111; }
+[data-theme="klocki"] :is(.ex-when small, .ex-kind, .ex-note) { color: #222; }
+[data-theme="atrament"] .exam { background: #fff; color: #1f1d3d; border: 2.5px solid #141226; border-radius: 20px; }
+[data-theme="atrament"] .exam-banner { background: #f7b88f; color: #141226; border: 2.5px solid #141226; border-radius: 18px; }
+[data-theme="atrament"] :is(.ex-when b, .exam-banner b) { color: #c2602c; }
+[data-theme="atrament"] .exam-banner b { color: #141226; }
+[data-theme="atrament"] :is(.ex-when small, .ex-kind, .ex-note) { color: #5a577f; }
+[data-theme="mono"] .exam { background: #fff; border: 0; border-radius: 20px; box-shadow: inset 4px 0 0 #ffb3b3; }
+[data-theme="mono"] .exam-banner { background: #111; color: #fff; border: 0; border-radius: 18px; }
+[data-theme="mono"] .exam-banner b { color: #ffc0c0; }
+[data-theme="mono"] .ex-when b { color: #c62f2f; }
+[data-theme="matcha"] .exam { background: #fbfaf1; border: 1.5px solid #2f5427; border-radius: 20px; }
+[data-theme="matcha"] .exam-banner { background: #f4c3cf; border: 1.5px solid #2f5427; border-radius: 18px; color: #2f5427; }
+[data-theme="matcha"] :is(.ex-when b, .exam-banner b) { color: #b33a57; }
