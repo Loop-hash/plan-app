@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { shortBuilding, parseGroups, parsePrograms, parseCycles, parsePlan, components, isSelected, toEvent, mondayISO, isoToTs, pickCycle, codePrefix } from '../www/usos.js';
+import { parseSubjects, shortBuilding, parseGroups, parsePrograms, parseCycles, parsePlan, components, isSelected, toEvent, mondayISO, isoToTs, pickCycle, codePrefix } from '../www/usos.js';
 
 process.env.TZ = 'Europe/Warsaw';
 const f = (n) => readFileSync(new URL('./fixtures/' + n, import.meta.url), 'utf8');
@@ -54,4 +54,8 @@ const mine = wk.filter((e) => isSelected(e, sel));
 assert.ok(mine.every((e) => e.compId !== gd.compId || e.group === 2));
 assert.equal(mondayISO(new Date(2026, 9, 29).getTime()), '2026-10-26');
 assert.equal(mondayISO(new Date(2026, 10, 1).getTime()), '2026-10-26');
+const subs = parseSubjects(f('subjects-UBZO.html'));
+assert.ok(subs.some((x) => x.kod === 'CSKKAu>SM23UBZO25' && /UBZO/.test(x.nazwa) && /Automatyki/.test(x.jedn)), JSON.stringify(subs.slice(0, 3)));
+const subjWeek = parsePlan(f('subject-week.html'));
+assert.equal(subjWeek.length, 7);
 console.log('OK — USOS:', groups.length, 'grup,', sem.length, 'wpisów sem.,', wk.length, 'w tygodniu');

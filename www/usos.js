@@ -27,6 +27,9 @@ export const urls = {
   programs: (jed) => `${BASE}katalog2/programy/szukajProgramu&method=by_faculty&jed_org_kod=${enc(jed)}`,
   group: (jed, kod) => `${BASE}katalog2/przedmioty/szukajPrzedmiotu&method=faculty_groups&kierujNaPlanyGrupy=1&jed_org_kod=${enc(jed)}&grupaKod=${enc(kod)}`,
   semester: (kod, cdyd) => `${BASE}katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=${enc(kod)}&cdyd_kod=${enc(cdyd)}&plan_division=semester`,
+  subjectSearch: (q) => `${BASE}katalog2/przedmioty/szukajPrzedmiotu&method=default&pattern=${enc(q)}&tab_limit=60`,
+  subjectSemester: (kod, cdyd) => `${BASE}katalog2/przedmioty/pokazPlanZajecPrzedmiotu&prz_kod=${enc(kod)}&cdyd_kod=${enc(cdyd)}&plan_division=semester`,
+  subjectWeek: (kod, cdyd, monday) => `${BASE}katalog2/przedmioty/pokazPlanZajecPrzedmiotu&prz_kod=${enc(kod)}&cdyd_kod=${enc(cdyd)}&plan_division=week&plan_week_sel_week=${monday}`,
   week: (kod, cdyd, monday) => `${BASE}katalog2/przedmioty/pokazPlanGrupyPrzedmiotow&grupa_kod=${enc(kod)}&cdyd_kod=${enc(cdyd)}&plan_division=week&plan_week_sel_week=${monday}`,
 };
 
@@ -54,6 +57,23 @@ export function parseGroups(html) {
     if (seen.has(kod)) continue;
     seen.add(kod);
     out.push({ kod, nazwa: strip(cells[1]).replace(/^["'„]+|["'”]+$/g, '') });
+  }
+  return out;
+}
+
+// Wyniki wyszukiwania przedmiotów: [{kod, nazwa, jedn}]
+export function parseSubjects(html) {
+  const out = [];
+  const seen = new Set();
+  for (const m of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+    const row = m[1];
+    const link = /pokazPrzedmiot&(?:amp;)?prz_kod=([^'"&]+)[^>]*>([\s\S]*?)<\/a>/.exec(row);
+    if (!link) continue;
+    const kod = decodeURIComponent(link[1]);
+    if (seen.has(kod)) continue;
+    seen.add(kod);
+    const jedn = (/pokazJednostke[^>]*>([\s\S]*?)<\/a>/.exec(row) || [])[1];
+    out.push({ kod, nazwa: strip(link[2]), jedn: strip(jedn || '') });
   }
   return out;
 }

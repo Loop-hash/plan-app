@@ -344,3 +344,11 @@ body.editing .toast { bottom: calc(var(--safe-bottom) + 150px); }
 
 .field textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; outline: none; resize: vertical; box-sizing: border-box; }
 .fb-kind { margin-bottom: 12px; }
+
+.shots { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.shots:empty { display: none; }
+.shot { position: relative; width: 84px; height: 150px; border-radius: 10px; overflow: hidden; background: var(--card); }
+.shot img { width: 100%; height: 100%; object-fit: cover; }
+.shot button { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 13px; background: rgba(0,0,0,.65); color: #fff; font-size: 16px; line-height: 1; }
+.shot-add { cursor: pointer; }
+.chip small { font-weight: 500; opacity: .8; font-size: 11px; }

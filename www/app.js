@@ -1,13 +1,13 @@
 import { parseICS, classType, diffEvents, normalizeUrl } from './ics.js';
 import {
-  FACULTIES, urls, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
+  FACULTIES, urls, parseSubjects, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
   isSelected, toEvent, mondayISO, isoToTs, codePrefix,
 } from './usos.js';
 import {
   TYPES, typeByKey, SOURCE_COLORS, emptyEdits, hasEdits, applyEdits, makePatch, occKey, seriesKey,
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
-import { sendFeedback, canSendDirect, recentErrors, logError } from './feedback.js';
+import { sendFeedback, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -139,8 +139,16 @@ function rebuildUsosEvents(plan) {
   return evs;
 }
 async function fetchWeek(plan, iso) {
-  const html = await fetchPlanText(urls.week(plan.src.kod, plan.src.cdyd, iso));
-  const entries = parsePlan(html);
+  const jobs = [fetchPlanText(urls.week(plan.src.kod, plan.src.cdyd, iso)).then(parsePlan)];
+  // dodatkowe przedmioty spoza planu kierunku (np. lektorat, UBZO)
+  for (const x of plan.extras || []) jobs.push(fetchPlanText(urls.subjectWeek(x.kod, plan.src.cdyd, iso)).then(parsePlan));
+  const parts = await Promise.all(jobs);
+  const seen = new Set();
+  const entries = [];
+  for (const e of parts.flat()) {
+    const k = `${e.compId}|${e.group}|${e.dayIndex}|${e.startMin}`;
+    if (!seen.has(k)) { seen.add(k); entries.push(e); }
+  }
   plan.weeks = plan.weeks || {};
   plan.weeks[iso] = entries;
 }
@@ -181,7 +189,8 @@ async function refreshPlan(plan, { quiet = false } = {}) {
     const text = await fetchPlanText(plan.url);
     events = parseICS(text);
   }
-  if (plan.events && plan.fetchedAt) {
+  if (plan.skipDiff) delete plan.skipDiff;
+  else if (plan.events && plan.fetchedAt) {
     const items = diffEvents(plan.events, events, Date.now());
     if (items.length) {
       plan.changes = { at: Date.now(), items };
@@ -753,6 +762,87 @@ function editSheet(ev) {
   });
 }
 
+// „+ Dodaj” w trybie edycji: własne zajęcia albo przedmiot z USOS
+function addChoiceSheet() {
+  const plan = activePlan();
+  if (plan?.kind !== 'usos') { editSheet(null); return; }
+  openSheet(`<h3>Dodaj</h3>
+    <button class="choice" data-act="add-subject"><b>Przedmiot z USOS</b><span>Np. lektorat albo UBZO — wyszukasz go i wybierzesz grupę, a plan sam będzie się aktualizował.</span></button>
+    <button class="choice" data-act="add-own"><b>Własne zajęcia</b><span>Wpiszesz nazwę, dzień i godziny ręcznie.</span></button>
+    ${(plan.extras || []).length ? `<div class="list-head">Dodane przedmioty z USOS</div>${plan.extras.map((x, i) => `<div class="plan-item"><div class="pi-main"><div class="pi-name">${esc(x.nazwa)}</div><div class="pi-sub">${esc(x.kod)}</div></div><button class="edit" data-act="rm-extra" data-i="${i}">Usuń</button></div>`).join('')}` : ''}`);
+}
+
+function subjectSearchSheet() {
+  const plan = activePlan();
+  openSheet(`<h3>Przedmiot z USOS</h3>
+    <form id="ssForm"><label class="field"><span>Nazwa przedmiotu (z USOS-a albo z rejestracji)</span>
+      <input id="ssQ" placeholder="np. język angielski, UBZO, nazwa przedmiotu" autocomplete="off"></label>
+      <button class="btn block" type="submit">Szukaj</button></form>
+    <div id="ssList"><p class="hint">Lektorat i przedmioty UBZO wybiera się indywidualnie, więc wyszukaj ten, na który jesteś zapisany. Pełną nazwę zobaczysz w USOSweb → Mój USOSweb → Plan zajęć albo w rejestracji.</p></div>`);
+  $('ssForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = $('ssQ').value.trim();
+    if (q.length < 3) return;
+    $('ssList').innerHTML = '<p class="hint">Szukam…</p>';
+    try {
+      const list = parseSubjects(await fetchPlanText(urls.subjectSearch(q)));
+      $('ssList').innerHTML = list.length
+        ? list.map((x) => `<button class="list-item" data-act="pick-subject" data-kod="${esc(x.kod)}" data-nazwa="${esc(x.nazwa)}">${esc(x.nazwa)}<small>${esc(x.jedn)} · ${esc(x.kod)}</small></button>`).join('') + (list.length >= 30 ? '<p class="hint">Pokazuję pierwsze 30 — doprecyzuj nazwę, jeśli nie widzisz swojego.</p>' : '')
+        : '<p class="hint">Nic nie znaleziono. Spróbuj krótszej albo innej nazwy.</p>';
+    } catch (err) { $('ssList').innerHTML = `<p class="err-box">${esc(err.message)}</p>`; }
+  });
+  setTimeout(() => $('ssQ')?.focus(), 50);
+}
+
+async function subjectGroupSheet(kod, nazwa) {
+  const plan = activePlan();
+  openSheet(`<h3>${esc(nazwa)}</h3><div class="empty"><div class="big">⏳</div><p>Pobieram plan przedmiotu…</p></div>`);
+  let comps;
+  try {
+    comps = components(parsePlan(await fetchPlanText(urls.subjectSemester(kod, plan.src.cdyd))));
+    if (!comps.length) throw new Error('Ten przedmiot nie ma zajęć w planie na ten semestr.');
+  } catch (err) {
+    openSheet(`<h3>${esc(nazwa)}</h3><div class="empty"><div class="big">⚠</div><p>${esc(err.message)}</p><button class="btn ghost" data-act="add-subject">Szukaj innego</button></div>`);
+    return;
+  }
+  if (!sheetOpen) return;
+  const sel = {};
+  const draw = () => {
+    let html = `<h3>${esc(nazwa)}</h3><p class="hint">Wybierz swoją grupę przy każdych zajęciach. „Pomiń” — nie dodawaj tych zajęć.</p>`;
+    for (const c of comps) {
+      const opts = [...c.groups.map((g) => g.group), 'skip'];
+      html += `<div class="comp"><div class="comp-type">${esc(c.typeFull)}</div><div class="chips">${opts.map((g) => {
+        const on = String(sel[c.compId] ?? (c.groups.length === 1 ? c.groups[0].group : '')) === String(g);
+        const slots = g === 'skip' ? '' : c.groups.find((x) => x.group === g).slots.join(', ');
+        return `<button type="button" class="chip${on ? ' on' : ''}" data-comp="${esc(c.compId)}" data-g="${g}">${g === 'skip' ? 'pomiń' : `gr. ${g}`}${slots ? ` <small>${esc(slots)}</small>` : ''}</button>`;
+      }).join('')}</div></div>`;
+    }
+    html += `<div class="err-box" id="sgErr" hidden></div><div class="sheet-actions"><button class="btn" id="sgSave">Dodaj do planu</button><button class="btn ghost" data-act="close">Anuluj</button></div>`;
+    const sc = $('sheet').scrollTop; openSheet(html); $('sheet').scrollTop = sc;
+  };
+  draw();
+  $('sheet').onclick = (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) { e.stopPropagation(); sel[chip.dataset.comp] = chip.dataset.g === 'skip' ? 'skip' : +chip.dataset.g; draw(); return; }
+    if (e.target.id === 'sgSave') {
+      e.stopPropagation();
+      const final = {};
+      for (const c of comps) {
+        const g = sel[c.compId] ?? (c.groups.length === 1 ? c.groups[0].group : undefined);
+        if (g === undefined) { $('sgErr').textContent = `Wybierz grupę: ${c.typeFull}`; $('sgErr').hidden = false; return; }
+        final[c.compId] = g === 'skip' ? -1 : g; // -1 = żadna grupa
+      }
+      plan.extras = (plan.extras || []).filter((x) => x.kod !== kod);
+      plan.extras.push({ kod, nazwa });
+      plan.sel = { ...(plan.sel || {}), ...final };
+      plan.weeks = {}; // dociągnij tygodnie razem z nowym przedmiotem
+      plan.skipDiff = true; // to Twoja zmiana, nie zmiana w USOS
+      save(); closeSheet(); render(); refreshActive();
+      toast(`Dodano: ${nazwa}`);
+    }
+  };
+}
+
 // przesunięcie z siatki: pytanie o zakres
 function moveSheet(ev, dayTs, startMin) {
   const plan = activePlan();
@@ -1161,12 +1251,31 @@ async function feedbackSheet() {
     <form id="fbForm" autocomplete="off">
       <div class="wswitch fb-kind"><button type="button" class="on" data-k="bug">Coś nie działa</button><button type="button" data-k="idea">Mam pomysł</button></div>
       <label class="field"><span id="fbLabel">Co się stało? Gdzie i kiedy?</span><textarea name="text" rows="5" required maxlength="4000" placeholder="np. W widoku tygodnia nie widać wtorkowego labu…"></textarea></label>
+      ${canAttach() ? `<div class="field"><span>Zrzuty ekranu (do 3)</span>
+        <div class="shots" id="fbShots"></div>
+        <label class="btn ghost block shot-add">+ Dodaj zrzut ekranu<input type="file" accept="image/*" id="fbFile" hidden></label></div>` : ''}
       <label class="field"><span>Podpis (opcjonalnie)</span><input name="who" maxlength="40" placeholder="imię albo nick"></label>
       <label class="switch-row"><span>Dołącz informacje techniczne (wersja, motyw, plan, ostatnie błędy)</span><input type="checkbox" name="diag" checked></label>
       <div class="err-box" id="fbErr" hidden></div>
       <div class="sheet-actions"><button type="submit" class="btn" id="fbSend">Wyślij</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
     </form>`);
   const f = $('fbForm');
+  const shots = [];
+  const drawShots = () => {
+    const el = $('fbShots'); if (!el) return;
+    el.innerHTML = shots.map((d, i) => `<div class="shot"><img src="${d}" alt="Zrzut ${i + 1}"><button type="button" data-rm="${i}" aria-label="Usuń zrzut">×</button></div>`).join('');
+    f.querySelector('.shot-add').hidden = shots.length >= 3;
+  };
+  $('fbFile')?.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try { shots.push(await shrinkImage(file)); drawShots(); } catch (err) { toast(err.message); }
+  });
+  $('fbShots')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rm]'); if (!b) return;
+    e.stopPropagation(); shots.splice(+b.dataset.rm, 1); drawShots();
+  });
   f.querySelector('.fb-kind').addEventListener('click', (e) => {
     const k = e.target.closest('[data-k]'); if (!k) return;
     e.stopPropagation();
@@ -1190,7 +1299,8 @@ async function feedbackSheet() {
     ].join('\n') : '';
     $('fbSend').disabled = true; $('fbSend').textContent = 'Wysyłam…';
     try {
-      const r = await sendFeedback({ kind, text, who: f.who.value, diag });
+      if (shots.length) $('fbSend').textContent = 'Wysyłam zrzuty…';
+      const r = await sendFeedback({ kind, text, who: f.who.value, diag, shots });
       closeSheet();
       if (r.browser) { window.open(r.url, '_blank'); toast('Dokończ zgłoszenie na GitHubie'); }
       else toast(`Dzięki! Zgłoszenie #${r.number} wysłane`);
@@ -1248,7 +1358,16 @@ document.addEventListener('click', (e) => {
   if (act === 'feedback') { feedbackSheet(); return; }
   if (act === 'ev-edit') { const ev = reg[+el.dataset.i]; if (ev) editSheet(ev); return; }
   if (act === 'add-plain') { addChooserSheet(); return; }
-  if (act === 'edit-add') { editSheet(null); return; }
+  if (act === 'edit-add') { addChoiceSheet(); return; }
+  if (act === 'add-own') { editSheet(null); return; }
+  if (act === 'add-subject') { subjectSearchSheet(); return; }
+  if (act === 'pick-subject') { subjectGroupSheet(el.dataset.kod, el.dataset.nazwa); return; }
+  if (act === 'rm-extra') {
+    const plan = activePlan();
+    const x = (plan.extras || [])[+el.dataset.i];
+    if (x) { plan.extras.splice(+el.dataset.i, 1); plan.weeks = {}; plan.skipDiff = true; save(); closeSheet(); render(); refreshActive(); toast(`Usunięto: ${x.nazwa}`); }
+    return;
+  }
   if (act === 'edit-restore') { restoreAllSheet(); return; }
   if (act === 'edit-done') { setEditMode(false); return; }
   if (act === 'week-style') { state.settings.weekStyle = el.dataset.style; save(); render(); return; }
