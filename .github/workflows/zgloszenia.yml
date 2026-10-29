@@ -11,6 +11,9 @@ on:
   schedule:
     - cron: '17 1 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/zgloszenia.yml']
 
 permissions:
   contents: write
@@ -28,6 +31,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
+          exec > >(tee log.txt) 2>&1
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
             -q '[.[] | select(.pull_request == null) | {number, title, body, created_at, updated_at, user: .user.login, labels: [.labels[].name], comments}]' \
             | jq -s 'add // []' > open.json
@@ -50,3 +55,10 @@ jobs:
           git add issues.json agent-state.json
           git diff --cached --quiet || git commit -q -m "Zgłoszenia: $(jq '.issues | length' issues.json) otwartych"
           git push -q origin zgloszenia
+      - name: Log na gałąź ci-logs
+        if: failure()
+        run: |
+          mkdir logs && cp log.txt logs/ 2>/dev/null || echo "brak logu" > logs/log.txt
+          cd logs && git init -q && git config user.name bot && git config user.email bot@users.noreply.github.com
+          git checkout -q -b ci-logs && git add -A && git commit -q -m "log zgłoszeń"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY" ci-logs
