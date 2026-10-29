@@ -1327,7 +1327,7 @@ async function settingsSheet() {
     <div id="updBox">${updBox()}</div>
     <div class="list-head">Zgłoszenia</div>
     <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
-    ${myReports().length ? `<button class="choice${unreadReplies() ? ' has-new' : ''}" data-act="my-reports"><b>Twoje zgłoszenia${unreadReplies() ? ` · ${unreadReplies()} ${unreadReplies() === 1 ? 'nowa odpowiedź' : 'nowe odpowiedzi'}` : ''}</b><span>Odpowiedzi twórcy na to, co wysłałeś z tego telefonu</span></button>` : ''}
+    <button class="choice${unreadReplies() ? ' has-new' : ''}" data-act="my-reports"><b>Twoje zgłoszenia${unreadReplies() ? ` · ${unreadReplies()} ${unreadReplies() === 1 ? 'nowa odpowiedź' : 'nowe odpowiedzi'}` : ''}</b><span>Odpowiedzi twórcy na to, co wysłałeś z tego telefonu</span></button>
     <div class="list-head">O apce</div>
     <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.<br>Kod apki jest otwarty (licencja MIT): <a href="https://github.com/Loop-hash/plan-app" target="_blank">github.com/Loop-hash/plan-app</a></div>
     ${isAdmin() ? '<button class="choice" data-act="admin"><b>Panel admina</b><span>Zgłoszenia, agent, log błędów, podgląd powitania</span></button>' : ''}
@@ -1685,6 +1685,7 @@ async function myReportsSheet() {
     const closed = new Set(repliesData?.closed || []);
     openSheet(`<h3>Twoje zgłoszenia</h3>
       <p class="hint">Tu widać odpowiedzi twórcy apki. Nie da się na nie odpisać — jeśli chcesz coś dodać, wyślij nowe zgłoszenie.</p>
+      ${list.length ? '' : '<div class="rp-none">Nie wysłałeś jeszcze zgłoszenia z tej wersji apki. Zgłoszenia wysłane przed aktualizacją się tu nie pokażą — jeśli sprawa jest aktualna, wyślij ją jeszcze raz.</div>'}
       ${list.map((r) => {
         const reps = repliesFor(r.n);
         return `<div class="report"><div class="rp-head"><b>#${r.n} ${esc(r.title)}</b><span>${esc(fmtShort(r.at))}${closed.has(r.n) ? ' · zamknięte' : ''}</span></div>
