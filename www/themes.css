@@ -370,3 +370,31 @@
 [data-theme="matcha"] .wg-lines i, [data-theme="matcha"] .wg-col { border-color: #a9c79a; }
 [data-theme="matcha"] .wg-now { border-top-color: #c4405e; }
 [data-theme="matcha"] .wg-now::before { background: #c4405e; }
+
+/* --- edycja i łączenie w motywach --- */
+[data-theme="blueprint"] .editbar { background: #0b3c86; border: 1.5px solid #fff; border-radius: 0; box-shadow: none; }
+[data-theme="blueprint"] .wg-ev.src { box-shadow: inset 0 4px 0 var(--s); }
+[data-theme="blueprint"] .card .meta .src-tag { color: #fff; }
+[data-theme="blueprint"] body.editing #editBtn { background: #fff; color: #0d4597; }
+[data-theme="blueprint"] :is(.radio-row, .merge-row) { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.75); border-radius: 0; }
+[data-theme="blueprint"] .field select { border-radius: 0; background: rgba(255,255,255,.06); border-color: #fff; color: #fff; }
+[data-theme="blueprint"] .field select option { color: #111; }
+[data-theme="klocki"] .editbar { background: #fff; border: 2px solid #111; }
+[data-theme="klocki"] :is(.radio-row, .merge-row) { background: #f3f3f5; border: 2px solid #111; border-radius: 16px; }
+[data-theme="klocki"] .field select { background: #fff; border: 2px solid #111; border-radius: 14px; }
+[data-theme="atrament"] .editbar { background: #fff; color: #1f1d3d; border: 2.5px solid #141226; }
+[data-theme="atrament"] .editbar .btn.ghost { background: #f1f0f8; }
+[data-theme="atrament"] body.editing #editBtn { background: #1f1d3d; color: #fff; }
+[data-theme="atrament"] .sheet :is(.radio-row, .merge-row) { background: #f1f0f8; border: 2px solid #141226; border-radius: 16px; }
+[data-theme="atrament"] .sheet .field select { background: #fff; color: #1f1d3d; border: 2px solid #141226; }
+[data-theme="atrament"] .ed-tag { color: #c2602c; }
+[data-theme="atrament"] body.editing .card { outline-color: #fff; }
+[data-theme="mono"] .editbar { background: #111; color: #fff; }
+[data-theme="mono"] .editbar .btn { background: #fff; color: #111; }
+[data-theme="mono"] .editbar .btn.ghost { background: #2b2c30; color: #fff; }
+[data-theme="mono"] :is(.radio-row, .merge-row) { background: #fff; border-radius: 18px; }
+[data-theme="mono"] .field select { background: #fff; color: #111; border: 1.5px solid #c9cbd0; border-radius: 16px; }
+[data-theme="matcha"] .editbar { background: #fbfaf1; border: 1.5px solid #2f5427; }
+[data-theme="matcha"] :is(.radio-row, .merge-row) { background: #eef5e6; border: 1.5px solid #2f5427; border-radius: 18px; }
+[data-theme="matcha"] .field select { background: #fff; color: #2f5427; border: 1.5px solid #2f5427; border-radius: 18px; }
+[data-theme="matcha"] .ed-tag { color: #b33a57; }

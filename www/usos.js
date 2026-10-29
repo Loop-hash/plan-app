@@ -226,6 +226,7 @@ export function toEvent(entry, mondayTs) {
   ].filter(Boolean).join('\n');
   return {
     uid: `${entry.compId}-${entry.group}-${start}`,
+    comp: `${entry.compId}-${entry.group}`,
     summary: entry.name,
     location: loc,
     description: desc,

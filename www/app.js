@@ -3,6 +3,10 @@ import {
   FACULTIES, urls, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
   isSelected, toEvent, mondayISO, isoToTs, codePrefix,
 } from './usos.js';
+import {
+  TYPES, typeByKey, SOURCE_COLORS, emptyEdits, hasEdits, applyEdits, makePatch, occKey, seriesKey,
+  minutesOf, fmtMin, parseMin, isoDate, dateTs,
+} from './edits.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -52,10 +56,35 @@ function ago(ts) {
   if (h < 24) return `${h} h temu`;
   return fmtDateTime(ts);
 }
+// Zajęcia do pokazania: plan (albo połączone plany) + Twoje zmiany.
+let evMemo = null;
+let editMode = false;
+function computeEvents(plan, depth = 0) {
+  let base;
+  if (plan.kind === 'merge') {
+    base = [];
+    (plan.sources || []).forEach((s, i) => {
+      const p = state.plans.find((x) => x.id === s.id);
+      if (!p || p.kind === 'merge' || depth > 0) return;
+      for (const e of computeEvents(p, depth + 1)) base.push({ ...e, srcColor: s.color, srcName: p.name, srcIdx: i, comp: `${s.id}:${e.comp || e.uid || e.summary}` });
+    });
+    base.sort((a, b) => a.start - b.start || a.end - b.end);
+  } else base = plan.events || [];
+  return applyEdits(base, plan.edits, { showHidden: editMode && depth === 0 });
+}
+function viewEvents(plan) {
+  if (!plan) return [];
+  if (evMemo && evMemo.id === plan.id && evMemo.edit === editMode) return evMemo.list;
+  const list = computeEvents(plan);
+  evMemo = { id: plan.id, edit: editMode, list };
+  return list;
+}
 function eventsOn(plan, dayTs) {
   const end = addDays(dayTs, 1);
-  return (plan?.events || []).filter((e) => e.start < end && e.end > dayTs);
+  return viewEvents(plan).filter((e) => e.start < end && e.end > dayTs);
 }
+const planReady = (plan) => (plan.kind === 'merge' ? (plan.sources || []).some((s) => state.plans.find((p) => p.id === s.id)?.events) || !!plan.edits?.custom?.length : !!plan.events);
+const planSources = (plan) => (plan.kind === 'merge' ? (plan.sources || []).map((s) => state.plans.find((p) => p.id === s.id)).filter(Boolean) : [plan]);
 let toastTimer;
 function toast(msg) {
   const t = $('toast');
@@ -69,13 +98,18 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 // Ładne rozbicie tytułu z USOS: "Przedmiot - Wykład" / "Przedmiot (WYK) gr. 1"
 function splitTitle(ev) {
-  const type = classType(ev);
+  const type = (ev.typeKey && typeByKey(ev.typeKey)) || classType(ev);
   let title = ev.summary;
   title = title.replace(/\s*[-–,:]\s*(wykład|ćwiczenia|laboratorium|projekt|seminarium|lektorat|wyk|ćw|lab)\b.*$/i, '');
   title = title.replace(/\s*\((wykład|ćwiczenia|laboratorium|projekt|seminarium|wyk|ćw|cw|lab|proj)[^)]*\)\s*$/i, '');
   if (!title.trim()) title = ev.summary;
   return { type, title: title.trim() };
 }
+// kolor zajęć: kierunek w połączonym planie, inaczej rodzaj zajęć
+const colorOf = (ev, type) => ev.srcColor || `var(--${type.cvar || type.key})`;
+const srcTag = (ev) => (ev.srcName ? `<span class="src-tag" style="--s:${ev.srcColor}"><i></i>${esc(ev.srcName)}</span>` : '');
+let reg = [];
+const regEv = (ev) => reg.push(ev) - 1;
 
 // ---------- pobieranie ----------
 async function fetchPlanText(url) {
@@ -165,6 +199,19 @@ async function refreshActive({ manual = false } = {}) {
   const plan = activePlan();
   if (!plan || refreshing) return;
   refreshing = true; renderTop();
+  if (plan.kind === 'merge') {
+    let changed = 0;
+    const errs = [];
+    for (const p of planSources(plan)) {
+      try { changed += await refreshPlan(p, { quiet: true }); } catch (e) { p.error = e.message || String(e); errs.push(`${p.name}: ${p.error}`); }
+    }
+    plan.fetchedAt = Date.now();
+    plan.error = errs.length ? errs.join(' · ') : null;
+    refreshing = false; save(); render();
+    if (changed) toast(`Plan się zmienił (${changed}) — zobacz zakładkę Zmiany`);
+    else if (manual) toast(errs.length ? plan.error : 'Plany odświeżone — bez zmian');
+    return;
+  }
   try {
     const changed = await refreshPlan(plan);
     if (manual && !changed) toast('Plan odświeżony — bez zmian');
@@ -178,11 +225,20 @@ async function refreshActive({ manual = false } = {}) {
 
 function maybeAutoRefresh() {
   const plan = activePlan();
-  if (plan && (!plan.fetchedAt || Date.now() - plan.fetchedAt > AUTO_REFRESH_MS)) refreshActive();
+  if (!plan) return;
+  const stale = (p) => !p.fetchedAt || Date.now() - p.fetchedAt > AUTO_REFRESH_MS;
+  if (plan.kind === 'merge' ? planSources(plan).some(stale) || stale(plan) : stale(plan)) refreshActive();
 }
 
 // ---------- render ----------
-function render() { renderTop(); renderContent(); ensureWeek(activePlan(), selDate); }
+function render() {
+  evMemo = null;
+  document.body.classList.toggle('editing', editMode);
+  $('editBar').hidden = !editMode || !activePlan();
+  renderTop(); renderContent();
+  const plan = activePlan();
+  if (plan) for (const p of planSources(plan)) ensureWeek(p, selDate);
+}
 
 function renderTop() {
   const plan = activePlan();
@@ -204,7 +260,7 @@ function renderTop() {
   $('weekStrip').hidden = !hasPlan || state.view !== 'day';
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.view === state.view));
   const badge = $('changesBadge');
-  const n = plan?.changesUnseen ? plan.changes?.items?.length || 0 : 0;
+  const n = plan ? planSources(plan).reduce((a, p) => a + (p.changesUnseen ? p.changes?.items?.length || 0 : 0), 0) : 0;
   badge.hidden = !n; badge.textContent = n;
 
   if (state.view === 'week') {
@@ -236,7 +292,9 @@ function renderContent() {
   const plan = activePlan();
   const c = $('content');
   if (!plan) { c.innerHTML = emptyNoPlans(); return; }
-  if (!plan.events) {
+  reg = [];
+  if (!planReady(plan)) {
+    if (plan.kind === 'merge') { c.innerHTML = '<div class="empty"><div class="big">⏳</div><h2>Pobieranie planów…</h2></div>'; return; }
     c.innerHTML = plan.error
       ? `<div class="empty"><div class="big">⚠</div><h2>Nie udało się pobrać planu</h2><p>${esc(plan.error)}</p><button class="btn" data-act="refresh">Spróbuj ponownie</button></div>`
       : `<div class="empty"><div class="big">⏳</div><h2>Pobieranie planu…</h2></div>`;
@@ -286,11 +344,11 @@ function eventCard(ev, now) {
     : !past && ev.start - now < 3 * 3600000 ? `<span>za ${dur(ev.start - now)}</span>` : `<span>${dur(ev.end - ev.start)}</span>`;
   const desc = ev.description && ev.description !== ev.summary ? `<div class="desc">${esc(ev.description)}</div>` : '';
   cardNo += 1;
-  return `<div class="card t-${type.key}${past ? ' past' : ''}${isNow ? ' now' : ''}" style="--c: var(--${type.key})" data-act="toggle">
+  return `<div class="card t-${type.key}${past ? ' past' : ''}${isNow ? ' now' : ''}${ev.hidden ? ' hidden-ev' : ''}${ev.edited || ev.custom ? ' edited' : ''}" style="--c: ${colorOf(ev, type)}" data-act="toggle" data-i="${regEv(ev)}">
     <div class="card-no">DET. ${String(cardNo).padStart(2, '0')} · ${esc(type.label.toUpperCase())}</div>
     <div class="time"><span><b>${ev.allDay ? 'cały dzień' : `${fmtTime(ev.start)} – ${fmtTime(ev.end)}`}</b></span>${right}</div>
     <div class="title">${esc(title)}</div>
-    <div class="meta"><span class="type-pill">${esc(type.label)}</span>${ev.location ? `<span class="loc">${PIN}${esc(ev.location)}</span>` : ''}</div>
+    <div class="meta"><span class="type-pill">${esc(type.label)}</span>${ev.location ? `<span class="loc">${PIN}${esc(ev.location)}</span>` : ''}${srcTag(ev)}${ev.hidden ? '<span class="ed-tag">ukryte</span>' : ev.custom ? '<span class="ed-tag">✎ Twoje</span>' : ev.edited ? '<span class="ed-tag">✎ zmienione</span>' : ''}</div>
     ${ev.allDay ? '' : `<div class="big-time"><b>${fmtTime(ev.start)}</b><span>–${fmtTime(ev.end)}</span></div>`}
     ${desc}
     ${isNow ? `<div class="progress" style="width:${prog.toFixed(1)}%"></div>` : ''}
@@ -302,7 +360,7 @@ function dayView(plan) {
   const evs = eventsOn(plan, selDate);
   const now = Date.now();
   if (!evs.length) {
-    const next = (plan.events || []).find((e) => e.start >= addDays(selDate, 1));
+    const next = viewEvents(plan).find((e) => e.start >= addDays(selDate, 1));
     return `<div class="empty"><div class="big">☕</div><h2>Wolne</h2>
       ${next ? `<p>Najbliższe zajęcia: <b>${esc(fmtDay(next.start))}</b>, ${fmtTime(next.start)}</p><button class="btn ghost" data-act="goto" data-day="${startOfDay(next.start)}">Przejdź</button>` : '<p>Brak kolejnych zajęć w planie.</p>'}
     </div>`;
@@ -325,7 +383,8 @@ function dayView(plan) {
 
 // ---------- tydzień jako siatka (dni × godziny) ----------
 const HOUR_PX = 58;
-let gridEvents = [];
+let gridDays = [];
+let gridMinH = 8;
 function weekSwitch() {
   const g = (state.settings?.weekStyle || 'grid') === 'grid';
   return `<div class="wswitch"><button class="${g ? 'on' : ''}" data-act="week-style" data-style="grid">Siatka</button><button class="${g ? '' : 'on'}" data-act="week-style" data-style="list">Lista</button></div>`;
@@ -334,7 +393,7 @@ function weekSwitch() {
 function abbrev(name) {
   const clean = name.replace(/\([^)]*\)/g, ' ').trim();
   if (clean.length <= 9) return clean;
-  const words = clean.split(/[\s-]+/).filter(Boolean);
+  const words = clean.split(/[\s\-–—,/]+/).filter((w) => /\p{L}/u.test(w));
   if (words.length < 2) return clean.slice(0, 8);
   return words.map((w, i) => (i ? w[0].toLowerCase() : w[0].toUpperCase())).join('');
 }
@@ -379,21 +438,22 @@ function weekGrid(plan) {
   let maxH = 16;
   for (const e of all) { minH = Math.min(minH, Math.floor(hourOf(e.start))); maxH = Math.max(maxH, Math.ceil(hourOf(e.end) || 24)); }
   const hours = maxH - minH;
-  gridEvents = [];
+  gridDays = days.map((x) => x.d);
+  gridMinH = minH;
   let head = '<div class="wg-corner"></div>';
   let cols = '';
-  for (const { d, evs } of days) {
+  days.forEach(({ d, evs }, col) => {
     head += `<button class="wg-dh${d === today ? ' today' : ''}" data-act="goto" data-day="${d}"><small>${esc(wdShort(d))}</small><b>${new Date(d).getDate()}</b></button>`;
     let blocks = '';
     for (const { e, lane, n } of lanes(evs)) {
       const top = (hourOf(e.start) - minH) * HOUR_PX;
       const h = Math.max(18, (hourOf(e.end) - hourOf(e.start)) * HOUR_PX - 2);
       const { type, title } = splitTitle(e);
-      const idx = gridEvents.push(e) - 1;
+      const idx = regEv(e);
       const room = (e.location || '').split(' · ')[0];
-      const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}`;
-      blocks += `<button class="${cls}" data-act="ev" data-i="${idx}" style="--c: var(--${type.key}); top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
-        <b>${esc(abbrev(title))}</b>${h > 40 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
+      const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}${e.hidden ? ' hidden-ev' : ''}${e.edited || e.custom ? ' edited' : ''}${e.srcColor ? ' src' : ''}${n > 1 ? ' narrow' : ''}`;
+      blocks += `<button class="${cls}" data-act="ev" data-i="${idx}" data-col="${col}" style="--c: ${colorOf(e, type)}; --s: ${e.srcColor || 'transparent'}; top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
+        <b>${esc(abbrev(title))}</b>${h > 40 && n < 3 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
     }
     let nowLine = '';
     if (d === today) {
@@ -401,7 +461,7 @@ function weekGrid(plan) {
       if (nh >= minH && nh <= maxH) nowLine = `<div class="wg-now" style="top:${((nh - minH) * HOUR_PX).toFixed(1)}px"></div>`;
     }
     cols += `<div class="wg-col${d === today ? ' today' : ''}">${blocks}${nowLine}</div>`;
-  }
+  });
   let labels = '';
   let lines = '';
   for (let hh = 0; hh <= hours; hh++) {
@@ -423,7 +483,8 @@ function eventSheet(e) {
   cardNo = 0;
   openSheet(`<h3>${esc(title)}</h3><p class="hint">${esc(cap(fmtDay(e.start)))}</p>
     <div class="sheet-card">${eventCard(e, Date.now()).replace('class="card', 'class="card open')}</div>
-    <button class="btn ghost block" data-act="goto" data-day="${startOfDay(e.start)}" style="margin-top:8px">Pokaż ten dzień</button>`);
+    <div class="row" style="margin-top:8px"><button class="btn ghost" data-act="goto" data-day="${startOfDay(e.start)}">Pokaż ten dzień</button>
+    <button class="btn ghost" data-act="ev-edit" data-i="${reg.indexOf(e)}">Edytuj</button></div>`);
 }
 
 // Tabelka rysunkowa (widoczna tylko w motywie Blueprint)
@@ -445,7 +506,7 @@ function titleBlock(plan, evs) {
     ${cell('SEMESTR', sem ? `${sem} · ${src.cdyd && /-L$/.test(src.cdyd) ? 'LATO' : 'ZIMA'}` : '—')}
     ${cell('TYDZIEŃ', `${wk} · ${wk % 2 ? 'NIEPARZ.' : 'PARZ.'}`)}
     ${cell('SKALA', '1 : 1')}
-    ${cell('ŹRÓDŁO', plan.kind === 'usos' ? 'USOSWEB' : 'ICAL')}
+    ${cell('ŹRÓDŁO', plan.kind === 'usos' ? 'USOSWEB' : plan.kind === 'merge' ? 'POŁĄCZONY' : 'ICAL')}
     ${cell('ZAJĘCIA', `${evs.length} SZT.`)}
     ${cell('ZAKRES', first && !first.allDay ? `${fmtTime(first.start)}–${fmtTime(last.end)}` : '—')}
     ${cell('REW.', 'A')}
@@ -464,9 +525,9 @@ function weekView(plan) {
       <span>${esc(cap(fmtDay(d)))}</span><small>${evs.length ? `${fmtTime(evs[0].start)}–${fmtTime(evs[evs.length - 1].end)}` : 'wolne'}</small></div>`;
     for (const ev of evs) {
       const { type, title } = splitTitle(ev);
-      html += `<div class="compact" style="--c: var(--${type.key})">
+      html += `<div class="compact${ev.hidden ? ' hidden-ev' : ''}" style="--c: ${colorOf(ev, type)}" data-act="toggle" data-i="${regEv(ev)}">
         <div class="t">${fmtTime(ev.start)}–${fmtTime(ev.end)}<br><span class="type-pill">${esc(type.code)}</span></div>
-        <div><div class="n">${esc(title)}</div>${ev.location ? `<div class="l">📍 ${esc(ev.location)}</div>` : ''}</div>
+        <div><div class="n">${esc(title)}</div>${ev.location ? `<div class="l">${esc(ev.location)}</div>` : ''}${ev.srcName ? `<div class="l">${srcTag(ev)}</div>` : ''}</div>
       </div>`;
     }
   }
@@ -474,6 +535,12 @@ function weekView(plan) {
 }
 
 function changesView(plan) {
+  if (plan.kind === 'merge') {
+    const parts = planSources(plan).map((p) => `<div class="list-head">${esc(p.name)}</div>${changesView(p)}`);
+    return parts.join('') || '<div class="empty"><h2>Bez zmian</h2></div>';
+  }
+  const E = plan.edits || {};
+  const mine = (e) => e && ((E.occ || {})[occKey(e)] || (E.series || {})[seriesKey(e)]);
   const ch = plan.changes;
   if (plan.changesUnseen) { plan.changesUnseen = false; save(); setTimeout(renderTop, 0); }
   if (!ch || !ch.items.length) {
@@ -490,7 +557,8 @@ function changesView(plan) {
     else if (c.type === 'removed') { k = 'Usunięte / odwołane'; d = `<s>${line(c.before)}</s>`; }
     else if (c.type === 'moved') { k = 'Przeniesione'; d = `<s>${line(c.before)}</s><br>→ ${line(c.after)}`; }
     else { k = 'Zmiana sali'; d = `${fmtDateTime(ev.start)} · <s>${esc(c.before.location || 'brak')}</s> → ${esc(c.after.location || 'brak')}`; }
-    html += `<div class="change ${c.type}"><div class="k">${k}</div><div class="n">${esc(title)}</div><div class="d">${d}</div></div>`;
+    const conflict = mine(c.before) || mine(c.after) ? '<div class="d conflict">✎ Masz własną zmianę tych zajęć — zostaje Twoja wersja. Możesz ją cofnąć w trybie edycji.</div>' : '';
+    html += `<div class="change ${c.type}"><div class="k">${k}</div><div class="n">${esc(title)}</div><div class="d">${d}</div>${conflict}</div>`;
   }
   return html;
 }
@@ -516,7 +584,7 @@ function plansSheet() {
   let html = '<h3>Twoje plany</h3>';
   if (!state.plans.length) html += '<p class="hint">Nie masz jeszcze żadnego planu.</p>';
   for (const p of state.plans) {
-    const sub = p.error ? `⚠ ${p.error}` : p.fetchedAt ? `${(p.events || []).length} ${zajec((p.events || []).length)} · ${ago(p.fetchedAt)}` : 'jeszcze nie pobrany';
+    const sub = p.kind === 'merge' ? `połączony: ${planSources(p).map((x) => x.name).join(' + ')}` : p.error ? `⚠ ${p.error}` : p.fetchedAt ? `${(p.events || []).length} ${zajec((p.events || []).length)} · ${ago(p.fetchedAt)}` : 'jeszcze nie pobrany';
     html += `<div class="plan-item${act && p.id === act.id ? ' on' : ''}" data-act="pick" data-id="${p.id}">
       <div class="pi-main"><div class="pi-name">${esc(p.name)}</div><div class="pi-sub">${esc(sub)}</div></div>
       <button class="edit" data-act="edit" data-id="${p.id}">Edytuj</button></div>`;
@@ -576,13 +644,258 @@ function formSheet(plan) {
   setTimeout(() => { if (!editing) form.name.focus(); }, 50);
 }
 
+// ---------- edycja planu ----------
+function planEdits(plan) {
+  if (!plan.edits) plan.edits = emptyEdits();
+  plan.edits.occ = plan.edits.occ || {};
+  plan.edits.series = plan.edits.series || {};
+  plan.edits.custom = plan.edits.custom || [];
+  return plan.edits;
+}
+function setEditMode(on) {
+  editMode = on;
+  if (on && state.view === 'changes') state.view = 'day';
+  render();
+  if (on) toast(state.view === 'week' ? 'Przeciągnij blok albo go dotknij, żeby edytować' : 'Dotknij zajęcia, żeby je edytować');
+}
+const typeOptions = (sel) => TYPES.map((t) => `<option value="${t.key}"${t.key === sel ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
+
+// formularz edycji / dodawania. ev = zajęcia z widoku (null = nowe)
+function editSheet(ev) {
+  const plan = activePlan();
+  if (!plan) return;
+  const isNew = !ev;
+  const orig = ev ? (ev.orig || ev) : null;
+  const custom = ev && ev.custom ? planEdits(plan).custom.find((c) => c.id === ev.cid) : null;
+  const t = ev ? splitTitle(ev).type : typeByKey('inne');
+  const dayTs = ev ? startOfDay(ev.start) : selDate;
+  const sMin = ev ? minutesOf(ev.start) : 10 * 60;
+  const eMin = ev ? minutesOf(ev.end) : 11 * 60 + 30;
+  const weeklyScope = !isNew && !(custom && !custom.weekly);
+  const defScope = ev && ev.edited && ev.editScope === 'occ' ? 'occ' : 'series';
+  openSheet(`<h3>${isNew ? 'Dodaj zajęcia' : 'Edytuj zajęcia'}</h3>
+    <form id="edForm" autocomplete="off">
+      <label class="field"><span>Nazwa</span><input name="summary" maxlength="80" required value="${esc(ev ? ev.summary : '')}" placeholder="np. Lektorat — angielski"></label>
+      <div class="row">
+        <label class="field"><span>Rodzaj</span><select name="typeKey">${typeOptions(t.key === 'inne' && isNew ? 'lek' : t.key)}</select></label>
+        <label class="field"><span>Sala</span><input name="location" maxlength="60" value="${esc(ev ? ev.location : '')}" placeholder="np. 3.14"></label>
+      </div>
+      <label class="field"><span>Dzień</span><input type="date" name="date" required value="${isoDate(dayTs)}"></label>
+      <div class="row">
+        <label class="field"><span>Od</span><input type="time" name="start" required step="300" value="${fmtMin(sMin)}"></label>
+        <label class="field"><span>Do</span><input type="time" name="end" required step="300" value="${fmtMin(eMin)}"></label>
+      </div>
+      ${isNew ? `<label class="switch-row"><span>Powtarzaj co tydzień (15 tygodni)</span><input type="checkbox" name="weekly" checked></label>` : ''}
+      ${weeklyScope ? `<div class="scope"><div class="list-head">Zastosuj do</div>
+        <label class="radio-row"><input type="radio" name="scope" value="occ"${defScope === 'occ' ? ' checked' : ''}><span>Tylko te zajęcia (${esc(fmtShort(dayTs))})</span></label>
+        <label class="radio-row"><input type="radio" name="scope" value="series"${defScope === 'series' ? ' checked' : ''}><span>Co tydzień</span></label></div>` : ''}
+      <div class="err-box" id="edErr" hidden></div>
+      <div class="sheet-actions"><button type="submit" class="btn">${isNew ? 'Dodaj' : 'Zapisz'}</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
+      ${isNew ? '' : `<div class="row" style="margin-top:8px">
+        ${ev.custom ? '<button type="button" class="btn danger" id="edDelete">Usuń</button>' : `<button type="button" class="btn ghost" id="edHide">${ev.hidden ? 'Pokaż z powrotem' : 'Ukryj (odwołane)'}</button>`}
+        ${ev.edited ? '<button type="button" class="btn ghost" id="edRestore">Przywróć oryginał</button>' : ''}</div>`}
+    </form>`);
+  const f = $('edForm');
+  const scope = () => (f.scope ? [...f.scope].find((r) => r.checked)?.value || 'series' : 'series');
+  const finish = (msg) => { save(); closeSheet(); render(); toast(msg); };
+  f.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = {
+      summary: f.summary.value.trim(), typeKey: f.typeKey.value, location: f.location.value.trim(),
+      dayTs: dateTs(f.date.value), startMin: parseMin(f.start.value), endMin: parseMin(f.end.value),
+    };
+    if (v.startMin == null || v.endMin == null || v.endMin <= v.startMin) { $('edErr').textContent = 'Godzina końca musi być po godzinie początku.'; $('edErr').hidden = false; return; }
+    const E = planEdits(plan);
+    if (isNew) {
+      E.custom.push({ id: uid(), summary: v.summary, typeKey: v.typeKey, location: v.location, date: f.date.value, startMin: v.startMin, endMin: v.endMin, weekly: !!f.weekly?.checked, until: isoDate(addDays(v.dayTs, 7 * 15)) });
+      selDate = startOfDay(v.dayTs);
+      finish('Dodano zajęcia');
+      return;
+    }
+    if (custom && (!custom.weekly || scope() === 'series')) {
+      // własne zajęcia: zmiana definicji (cała seria albo pojedyncze)
+      const shift = Math.round((startOfDay(v.dayTs) - startOfDay(orig.start)) / DAY);
+      Object.assign(custom, { summary: v.summary, typeKey: v.typeKey, location: v.location, startMin: v.startMin, endMin: v.endMin, date: isoDate(addDays(dateTs(custom.date), shift)) });
+      finish('Zapisano');
+      return;
+    }
+    const patch = makePatch(orig, { ...v, origTypeKey: classType(orig).key });
+    if (scope() === 'occ') E.occ[ev.okey] = patch;
+    else { E.series[ev.skey] = patch; delete E.occ[ev.okey]; }
+    finish(scope() === 'occ' ? 'Zmienione tylko te zajęcia' : 'Zmienione co tydzień');
+  });
+  $('edDelete')?.addEventListener('click', () => {
+    const E = planEdits(plan);
+    if (custom.weekly && scope() === 'occ') E.occ[ev.okey] = { hidden: true };
+    else E.custom = E.custom.filter((c) => c.id !== custom.id);
+    finish('Usunięto');
+  });
+  $('edHide')?.addEventListener('click', () => {
+    const E = planEdits(plan);
+    const key = scope() === 'occ' ? 'occ' : 'series';
+    const k = key === 'occ' ? ev.okey : ev.skey;
+    const cur = { ...(E[key][k] || {}) };
+    if (ev.hidden) {
+      delete cur.hidden;
+      // ukrycie mogło być zapisane w drugiej warstwie
+      for (const [L, kk] of [['occ', ev.okey], ['series', ev.skey]]) if (E[L][kk]) delete E[L][kk].hidden;
+    } else cur.hidden = true;
+    if (Object.keys(cur).length) E[key][k] = cur; else delete E[key][k];
+    for (const [L, kk] of [['occ', ev.okey], ['series', ev.skey]]) if (E[L][kk] && !Object.keys(E[L][kk]).length) delete E[L][kk];
+    finish(ev.hidden ? 'Zajęcia znów widoczne' : 'Ukryte — w trybie edycji możesz je przywrócić');
+  });
+  $('edRestore')?.addEventListener('click', () => {
+    const E = planEdits(plan);
+    delete E.occ[ev.okey]; delete E.series[ev.skey];
+    finish('Przywrócono oryginał');
+  });
+}
+
+// przesunięcie z siatki: pytanie o zakres
+function moveSheet(ev, dayTs, startMin) {
+  const plan = activePlan();
+  const orig = ev.orig || ev;
+  const len = minutesOf(ev.end) - minutesOf(ev.start);
+  const endMin = Math.min(startMin + len, 24 * 60 - 1);
+  const custom = ev.custom ? planEdits(plan).custom.find((c) => c.id === ev.cid) : null;
+  const apply = (sc) => {
+    const E = planEdits(plan);
+    if (custom && (!custom.weekly || sc === 'series')) {
+      const shift = Math.round((dayTs - startOfDay(orig.start)) / DAY);
+      Object.assign(custom, { startMin, endMin, date: isoDate(addDays(dateTs(custom.date), shift)) });
+    } else {
+      const base = { ...(E[sc === 'occ' ? 'occ' : 'series'][sc === 'occ' ? ev.okey : ev.skey] || {}) };
+      const patch = { ...base, ...makePatch(orig, { dayTs, startMin, endMin, location: ev.location, summary: ev.summary }) };
+      if (patch.dayShift === undefined || Math.round((dayTs - startOfDay(orig.start)) / DAY) === 0) delete patch.dayShift;
+      if (sc === 'occ') E.occ[ev.okey] = patch; else { E.series[ev.skey] = patch; delete E.occ[ev.okey]; }
+    }
+    save(); closeSheet(); render(); toast('Przesunięto');
+  };
+  const { title } = splitTitle(ev);
+  openSheet(`<h3>Przesunąć zajęcia?</h3>
+    <p><b>${esc(title)}</b><br>${esc(cap(fmtDay(dayTs)))}, ${fmtMin(startMin)}–${fmtMin(endMin)}</p>
+    ${custom && !custom.weekly ? '<div class="sheet-actions"><button class="btn" id="mvSeries">Przesuń</button><button class="btn ghost" data-act="close">Anuluj</button></div>'
+      : `<button class="btn block" id="mvOcc">Tylko te zajęcia (${esc(fmtShort(startOfDay(ev.start)))})</button>
+         <button class="btn ghost block" id="mvSeries" style="margin-top:8px">Co tydzień</button>
+         <button class="btn ghost block" data-act="close" style="margin-top:8px">Anuluj</button>`}`);
+  $('mvOcc')?.addEventListener('click', () => apply('occ'));
+  $('mvSeries')?.addEventListener('click', () => apply('series'));
+}
+
+// przeciąganie bloków w siatce tygodnia (tylko w trybie edycji)
+let drag = null;
+document.addEventListener('pointerdown', (e) => {
+  if (!editMode) return;
+  const el = e.target.closest('.wg-ev');
+  if (!el) return;
+  const col = el.closest('.wg-col');
+  drag = { el, id: +el.dataset.i, col: +el.dataset.col, x: e.clientX, y: e.clientY, w: col.getBoundingClientRect().width, moved: false, pid: e.pointerId };
+  try { el.setPointerCapture(e.pointerId); } catch (err) { /* */ }
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const dx = e.clientX - drag.x;
+  const dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 8) return;
+  drag.moved = true;
+  drag.el.classList.add('dragging');
+  const dCol = Math.max(-drag.col, Math.min(gridDays.length - 1 - drag.col, Math.round(dx / drag.w)));
+  const dMin = Math.round((dy / HOUR_PX) * 60 / 15) * 15;
+  drag.dCol = dCol; drag.dMin = dMin;
+  drag.el.style.transform = `translate(${dCol * drag.w}px, ${(dMin / 60) * HOUR_PX}px)`;
+  const ev = reg[drag.id];
+  if (ev) drag.el.dataset.tip = fmtMin(Math.max(0, minutesOf(ev.start) + dMin));
+});
+document.addEventListener('pointerup', (e) => {
+  if (!drag || e.pointerId !== drag.pid) return;
+  const d = drag; drag = null;
+  d.el.classList.remove('dragging');
+  const ev = reg[d.id];
+  if (!ev) return;
+  if (!d.moved) { editSheet(ev); return; }
+  d.el.style.transform = '';
+  if (!d.dCol && !d.dMin) return;
+  const newDay = gridDays[d.col + d.dCol];
+  const newStart = Math.max(0, Math.min(23 * 60 + 45, minutesOf(ev.start) + d.dMin));
+  moveSheet(ev, newDay, newStart);
+});
+document.addEventListener('pointercancel', () => { if (drag) { drag.el.style.transform = ''; drag.el.classList.remove('dragging'); drag = null; } });
+
+function restoreAllSheet() {
+  const plan = activePlan();
+  const E = planEdits(plan);
+  const n = Object.keys(E.occ).length + Object.keys(E.series).length;
+  openSheet(`<h3>Przywrócić oryginalny plan?</h3>
+    <p>Cofnie ${n} ${n === 1 ? 'zmianę' : 'zmian(y)'}: przesunięcia, ukrycia i poprawki sal. ${E.custom.length ? `Dodane przez Ciebie zajęcia (${E.custom.length}) zostaną — usuniesz je osobno albo przyciskiem niżej.` : ''}</p>
+    <button class="btn block" id="raGo">Przywróć oryginał</button>
+    ${E.custom.length ? '<button class="btn ghost block" id="raAll" style="margin-top:8px">Przywróć i usuń też moje zajęcia</button>' : ''}
+    <button class="btn ghost block" data-act="close" style="margin-top:8px">Anuluj</button>`);
+  $('raGo').addEventListener('click', () => { E.occ = {}; E.series = {}; save(); closeSheet(); render(); toast('Przywrócono oryginalny plan'); });
+  $('raAll')?.addEventListener('click', () => { plan.edits = emptyEdits(); save(); closeSheet(); render(); toast('Przywrócono oryginalny plan'); });
+}
+
+// ---------- łączenie planów ----------
+function mergeSheet(plan) {
+  const candidates = state.plans.filter((p) => p.kind !== 'merge');
+  if (candidates.length < 2) {
+    openSheet(`<h3>Połącz plany</h3><p>Najpierw dodaj co najmniej dwa plany (np. oba kierunki), potem połączysz je w jeden.</p>
+      <button class="btn block" data-act="add-plain">+ Dodaj plan</button>`);
+    return;
+  }
+  const chosen = new Map((plan?.sources || []).map((s) => [s.id, s.color]));
+  if (!plan) candidates.slice(0, 2).forEach((p, i) => chosen.set(p.id, SOURCE_COLORS[i]));
+  const draw = () => {
+    const rows = candidates.map((p) => {
+      const on = chosen.has(p.id);
+      const col = chosen.get(p.id);
+      return `<div class="merge-row${on ? ' on' : ''}">
+        <label class="merge-pick"><input type="checkbox" data-mp="${p.id}"${on ? ' checked' : ''}><span>${esc(p.name)}</span></label>
+        ${on ? `<div class="chips">${SOURCE_COLORS.map((c) => `<button type="button" class="swatch${c === col ? ' on' : ''}" data-mc="${p.id}" data-color="${c}" style="background:${c}" aria-label="Kolor ${c}"></button>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+    const name = $('mgName')?.value ?? (plan?.name || 'Wszystko razem');
+    openSheet(`<h3>${plan ? 'Edytuj połączony plan' : 'Połącz plany'}</h3>
+      <p class="hint">Zajęcia z zaznaczonych planów pokażą się razem, każdy kierunek w swoim kolorze. Plany źródłowe zostają i nadal same się aktualizują.</p>
+      <label class="field"><span>Nazwa</span><input id="mgName" maxlength="40" value="${esc(name)}"></label>
+      ${rows}
+      <div class="err-box" id="mgErr" hidden></div>
+      <div class="sheet-actions"><button class="btn" id="mgSave">${plan ? 'Zapisz' : 'Połącz'}</button><button class="btn ghost" data-act="close">Anuluj</button></div>
+      ${plan ? `<button type="button" class="btn danger block" data-act="delete" data-id="${plan.id}" style="margin-top:8px">Usuń połączony plan</button>` : ''}`);
+  };
+  draw();
+  $('sheet').onclick = (e) => {
+    const cb = e.target.closest('[data-mp]');
+    if (cb) {
+      e.stopPropagation();
+      if (cb.checked) { const used = new Set(chosen.values()); chosen.set(cb.dataset.mp, SOURCE_COLORS.find((c) => !used.has(c)) || SOURCE_COLORS[0]); }
+      else chosen.delete(cb.dataset.mp);
+      draw(); return;
+    }
+    const sw = e.target.closest('[data-mc]');
+    if (sw) { e.stopPropagation(); chosen.set(sw.dataset.mc, sw.dataset.color); draw(); return; }
+    if (e.target.id === 'mgSave') {
+      e.stopPropagation();
+      if (chosen.size < 2) { $('mgErr').textContent = 'Zaznacz co najmniej dwa plany.'; $('mgErr').hidden = false; return; }
+      const target = plan || { id: uid(), kind: 'merge', edits: emptyEdits() };
+      target.name = ($('mgName').value || '').trim() || 'Wszystko razem';
+      target.sources = candidates.filter((p) => chosen.has(p.id)).map((p) => ({ id: p.id, color: chosen.get(p.id) }));
+      if (!plan) state.plans.push(target);
+      state.activeId = target.id;
+      save(); closeSheet(); render(); maybeAutoRefresh();
+      toast(plan ? 'Zapisano' : 'Połączono plany');
+    }
+  };
+}
+
 // ---------- wybór planu z katalogu USOS ----------
 function addChooserSheet() {
   openSheet(`<h3>Dodaj plan</h3>
     <button class="choice" data-act="pick-faculty">
       <b>Wybierz z listy</b><span>Wydział → kierunek i semestr → Twoje grupy. Bez logowania.</span></button>
     <button class="choice" data-act="add-link">
-      <b>Wklej link z USOSweb</b><span>Twój osobisty plan (eksport iCal) — dokładnie te zajęcia, na które jesteś zapisany.</span></button>`);
+      <b>Wklej link z USOSweb</b><span>Twój osobisty plan (eksport iCal) — dokładnie te zajęcia, na które jesteś zapisany.</span></button>
+    <button class="choice" data-act="merge">
+      <b>Połącz plany</b><span>Np. dwa kierunki na jednym planie — każdy w innym kolorze.</span></button>`);
 }
 
 function facultySheet() {
@@ -662,7 +975,7 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
   const maxG = (t) => Math.max(...multi.filter((c) => c.typeCode === t).map((c) => c.groups.length));
   const typeName = (t) => (multi.find((c) => c.typeCode === t) || {}).typeFull || t;
   const semNo = (/(\d+)\s*semestr/.exec(src.nazwa || '') || [])[1];
-  const defName = plan?.name || `${src.prog || 'Plan'}${semNo ? ` · sem. ${semNo}` : ''}`;
+  const defName = plan?.name || `${src.prog || 'Plan'}${semNo ? ` · sem. ${semNo}` : ''}${/\bang\b/i.test(src.nazwa || '') ? ' (ang.)' : ''}`;
 
   const chips = (c) => ['all', ...c.groups.map((g) => g.group)].map((g) => {
     const on = String(sel[c.compId] ?? 'all') === String(g);
@@ -845,7 +1158,7 @@ document.addEventListener('click', (e) => {
   if (act === 'edit') {
     e.stopPropagation();
     const p = state.plans.find((x) => x.id === el.dataset.id);
-    if (p?.kind === 'usos') groupSelectSheet({ plan: p }); else formSheet(p);
+    if (p?.kind === 'usos') groupSelectSheet({ plan: p }); else if (p?.kind === 'merge') mergeSheet(p); else formSheet(p);
     return;
   }
   if (act === 'theme') {
@@ -869,13 +1182,23 @@ document.addEventListener('click', (e) => {
     const p = state.plans.find((x) => x.id === el.dataset.id);
     if (p && el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.textContent = `Na pewno usunąć „${p.name}”?`; return; }
     state.plans = state.plans.filter((x) => x.id !== el.dataset.id);
+    for (const m of state.plans) if (m.kind === 'merge') m.sources = (m.sources || []).filter((s) => s.id !== el.dataset.id);
     if (state.activeId === el.dataset.id) state.activeId = state.plans[0]?.id || null;
     save(); closeSheet(); render(); toast('Plan usunięty'); return;
   }
   if (act === 'refresh') { refreshActive({ manual: true }); return; }
-  if (act === 'toggle') { el.classList.toggle('open'); return; }
+  if (act === 'toggle') {
+    if (editMode && reg[+el.dataset.i]) { editSheet(reg[+el.dataset.i]); return; }
+    el.classList.toggle('open'); return;
+  }
+  if (act === 'merge') { mergeSheet(null); return; }
+  if (act === 'ev-edit') { const ev = reg[+el.dataset.i]; if (ev) editSheet(ev); return; }
+  if (act === 'add-plain') { addChooserSheet(); return; }
+  if (act === 'edit-add') { editSheet(null); return; }
+  if (act === 'edit-restore') { restoreAllSheet(); return; }
+  if (act === 'edit-done') { setEditMode(false); return; }
   if (act === 'week-style') { state.settings.weekStyle = el.dataset.style; save(); render(); return; }
-  if (act === 'ev') { const ev = gridEvents[+el.dataset.i]; if (ev) eventSheet(ev); return; }
+  if (act === 'ev') { if (editMode) return; const ev = reg[+el.dataset.i]; if (ev) eventSheet(ev); return; }
   if (el.dataset.day) {
     if (sheetOpen) closeSheet();
     selDate = +el.dataset.day;
@@ -887,6 +1210,7 @@ document.addEventListener('click', (e) => {
 $('planSwitch').addEventListener('click', plansSheet);
 $('plansBtn').addEventListener('click', plansSheet);
 $('settingsBtn').addEventListener('click', settingsSheet);
+$('editBtn').addEventListener('click', () => setEditMode(!editMode));
 $('sheetBackdrop').addEventListener('click', () => closeSheet());
 $('refreshBtn').addEventListener('click', () => refreshActive({ manual: true }));
 $('dateLabel').addEventListener('click', () => { selDate = startOfDay(Date.now()); render(); });

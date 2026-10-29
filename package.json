@@ -4,7 +4,7 @@
   "private": true,
   "description": "Plan zajęć Politechniki Śląskiej z USOS — Android",
   "scripts": {
-    "test": "node test/ics.test.mjs && node test/usos.test.mjs",
+    "test": "node test/ics.test.mjs && node test/usos.test.mjs && node test/edits.test.mjs",
     "serve": "cd www && python3 -m http.server 8123"
   },
   "dependencies": {

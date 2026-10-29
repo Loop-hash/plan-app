@@ -19,6 +19,7 @@
   --sem: #5cd6e0;
   --egz: #ff6b6b;
   --inne: #8d96a8;
+  --lek: var(--sem);
   --r: 14px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -296,3 +297,47 @@ input { font: inherit; }
 .wg-now { position: absolute; left: -1px; right: 0; border-top: 2px solid var(--danger); z-index: 2; }
 .wg-now::before { content: ""; position: absolute; left: -5px; top: -5px; width: 8px; height: 8px; border-radius: 4px; background: var(--danger); }
 .sheet-card .card { margin-bottom: 0; }
+
+/* edycja planu */
+.plan-name { max-width: 44vw; }
+body.editing #editBtn { background: var(--accent); color: var(--bg); }
+body.editing .content { padding-bottom: calc(var(--safe-bottom) + 96px); }
+.editbar {
+  position: fixed; left: 10px; right: 10px; bottom: calc(var(--safe-bottom) + 10px); z-index: 15;
+  display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 16px;
+  background: var(--card2); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+.editbar .eb-text { flex: 1; font-weight: 700; font-size: 13px; padding-left: 6px; }
+.editbar .btn { padding: 9px 11px; font-size: 13px; }
+body.editing .card, body.editing .compact { outline: 1.5px dashed var(--muted); outline-offset: 2px; }
+body.editing .wg-ev { touch-action: none; outline: 1px dashed var(--muted); outline-offset: -1px; cursor: grab; }
+.wg-ev.dragging { z-index: 5; opacity: .9; box-shadow: 0 8px 20px rgba(0,0,0,.4); transition: none; }
+.wg-ev.dragging::after { content: attr(data-tip); position: absolute; top: 2px; right: 3px; font-size: 10px; font-weight: 700; background: var(--accent); color: var(--bg); padding: 0 4px; border-radius: 4px; }
+.hidden-ev { opacity: .38 !important; background-image: repeating-linear-gradient(135deg, rgba(128,128,128,.25) 0 3px, transparent 3px 9px) !important; }
+.hidden-ev .title, .hidden-ev b { text-decoration: line-through; }
+.wg-ev.edited::before, .card.edited .title::after { content: "✎"; font-size: 10px; opacity: .8; }
+.wg-ev.edited::before { position: absolute; right: 3px; bottom: 2px; }
+.card.edited .title::after { margin-left: 6px; }
+.ed-tag { font-size: 11px; font-weight: 700; color: var(--accent); }
+.src-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; }
+.src-tag i { width: 9px; height: 9px; border-radius: 5px; background: var(--s); flex: none; }
+.wg-ev.src { box-shadow: inset 0 3px 0 var(--s); }
+.field select {
+  width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font: inherit; outline: none;
+}
+.field input[type=date], .field input[type=time] { min-height: 46px; }
+.scope { margin: 4px 0 6px; }
+.radio-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--card); border-radius: 12px; margin-bottom: 6px; font-size: 14px; }
+.radio-row input { width: 20px; height: 20px; accent-color: var(--accent); }
+.merge-row { background: var(--card); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.merge-pick { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.merge-pick input { width: 20px; height: 20px; accent-color: var(--accent); }
+.merge-row .chips { margin-top: 10px; }
+.swatch { width: 34px; height: 34px; border-radius: 17px; border: 3px solid transparent; }
+.swatch.on { border-color: var(--text); }
+.conflict { color: var(--accent); margin-top: 6px; }
+
+.wg-ev.narrow { padding: 3px 2px; }
+.wg-ev.narrow b { font-size: 10.5px; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
+body.editing .toast { bottom: calc(var(--safe-bottom) + 150px); }

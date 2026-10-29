@@ -192,6 +192,7 @@ export function classType(ev) {
   if (/ćwicz|cwicz|\bćw\b|\bcw\b|exercise|tutorial/.test(t)) return { code: 'Ć', label: 'Ćwiczenia', key: 'cw' };
   if (/projekt|project/.test(t)) return { code: 'P', label: 'Projekt', key: 'proj' };
   if (/seminar/.test(t)) return { code: 'S', label: 'Seminarium', key: 'sem' };
+  if (/lektorat|język obcy|jezyk obcy/.test(t)) return { code: 'J', label: 'Lektorat', key: 'lek' };
   if (/egzamin|exam|kolokwium|zaliczen/.test(t)) return { code: 'E', label: 'Egzamin', key: 'egz' };
   return { code: '•', label: 'Zajęcia', key: 'inne' };
 }
