@@ -249,7 +249,7 @@ function renderContent() {
       : `<div class="empty"><div class="big">⏳</div><h2>Pobieram ten tydzień…</h2></div>`;
     return;
   }
-  if (state.view === 'week') c.innerHTML = weekView(plan);
+  if (state.view === 'week') c.innerHTML = weekSwitch() + ((state.settings?.weekStyle || 'grid') === 'grid' ? weekGrid(plan) : weekView(plan));
   else if (state.view === 'changes') c.innerHTML = changesView(plan);
   else c.innerHTML = dayView(plan);
 }
@@ -321,6 +321,109 @@ function dayView(plan) {
   html += `<p class="hint day-sum">${evs.length} ${zajec(evs.length)} · ${first.allDay ? '' : `${fmtTime(first.start)}–${fmtTime(last.end)}`}</p>`;
   html += titleBlock(plan, evs);
   return html;
+}
+
+// ---------- tydzień jako siatka (dni × godziny) ----------
+const HOUR_PX = 58;
+let gridEvents = [];
+function weekSwitch() {
+  const g = (state.settings?.weekStyle || 'grid') === 'grid';
+  return `<div class="wswitch"><button class="${g ? 'on' : ''}" data-act="week-style" data-style="grid">Siatka</button><button class="${g ? '' : 'on'}" data-act="week-style" data-style="list">Lista</button></div>`;
+}
+// „General mechanics” -> „Gm”, „Gas dynamics” -> „Gd”, krótkie nazwy zostają w całości
+function abbrev(name) {
+  const clean = name.replace(/\([^)]*\)/g, ' ').trim();
+  if (clean.length <= 9) return clean;
+  const words = clean.split(/[\s-]+/).filter(Boolean);
+  if (words.length < 2) return clean.slice(0, 8);
+  return words.map((w, i) => (i ? w[0].toLowerCase() : w[0].toUpperCase())).join('');
+}
+// rozkład nachodzących na siebie zajęć obok siebie
+function lanes(evs) {
+  const out = [];
+  let cluster = [];
+  let clusterEnd = -Infinity;
+  const flush = () => {
+    const laneEnds = [];
+    for (const e of cluster) {
+      let l = laneEnds.findIndex((end) => end <= e.start);
+      if (l < 0) { l = laneEnds.length; laneEnds.push(0); }
+      laneEnds[l] = e.end;
+      out.push({ e, lane: l });
+    }
+    const n = laneEnds.length;
+    for (let i = out.length - cluster.length; i < out.length; i++) out[i].n = n;
+    cluster = [];
+  };
+  for (const e of evs) {
+    if (e.start >= clusterEnd && cluster.length) flush();
+    cluster.push(e);
+    clusterEnd = Math.max(clusterEnd, e.end);
+  }
+  if (cluster.length) flush();
+  return out;
+}
+function weekGrid(plan) {
+  const ws = startOfWeek(selDate);
+  const today = startOfDay(Date.now());
+  const now = Date.now();
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    const evs = eventsOn(plan, d).filter((e) => !e.allDay);
+    if (i < 5 || evs.length || state.settings?.weekends) days.push({ d, evs });
+  }
+  const all = days.flatMap((x) => x.evs);
+  const hourOf = (ts) => { const t = new Date(ts); return t.getHours() + t.getMinutes() / 60; };
+  let minH = 8;
+  let maxH = 16;
+  for (const e of all) { minH = Math.min(minH, Math.floor(hourOf(e.start))); maxH = Math.max(maxH, Math.ceil(hourOf(e.end) || 24)); }
+  const hours = maxH - minH;
+  gridEvents = [];
+  let head = '<div class="wg-corner"></div>';
+  let cols = '';
+  for (const { d, evs } of days) {
+    head += `<button class="wg-dh${d === today ? ' today' : ''}" data-act="goto" data-day="${d}"><small>${esc(wdShort(d))}</small><b>${new Date(d).getDate()}</b></button>`;
+    let blocks = '';
+    for (const { e, lane, n } of lanes(evs)) {
+      const top = (hourOf(e.start) - minH) * HOUR_PX;
+      const h = Math.max(18, (hourOf(e.end) - hourOf(e.start)) * HOUR_PX - 2);
+      const { type, title } = splitTitle(e);
+      const idx = gridEvents.push(e) - 1;
+      const room = (e.location || '').split(' · ')[0];
+      const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}`;
+      blocks += `<button class="${cls}" data-act="ev" data-i="${idx}" style="--c: var(--${type.key}); top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
+        <b>${esc(abbrev(title))}</b>${h > 40 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
+    }
+    let nowLine = '';
+    if (d === today) {
+      const nh = hourOf(now);
+      if (nh >= minH && nh <= maxH) nowLine = `<div class="wg-now" style="top:${((nh - minH) * HOUR_PX).toFixed(1)}px"></div>`;
+    }
+    cols += `<div class="wg-col${d === today ? ' today' : ''}">${blocks}${nowLine}</div>`;
+  }
+  let labels = '';
+  let lines = '';
+  for (let hh = 0; hh <= hours; hh++) {
+    labels += `<span style="top:${hh * HOUR_PX}px">${String(minH + hh).padStart(2, '0')}</span>`;
+    lines += `<i style="top:${hh * HOUR_PX}px"></i>`;
+  }
+  const nl = days.length;
+  return `<div class="wg" style="--cols:${nl}">
+    <div class="wg-head">${head}</div>
+    <div class="wg-body" style="height:${hours * HOUR_PX}px">
+      <div class="wg-hours">${labels}</div>
+      <div class="wg-lines">${lines}</div>
+      <div class="wg-cols">${cols}</div>
+    </div>
+  </div>`;
+}
+function eventSheet(e) {
+  const { title } = splitTitle(e);
+  cardNo = 0;
+  openSheet(`<h3>${esc(title)}</h3><p class="hint">${esc(cap(fmtDay(e.start)))}</p>
+    <div class="sheet-card">${eventCard(e, Date.now()).replace('class="card', 'class="card open')}</div>
+    <button class="btn ghost block" data-act="goto" data-day="${startOfDay(e.start)}" style="margin-top:8px">Pokaż ten dzień</button>`);
 }
 
 // Tabelka rysunkowa (widoczna tylko w motywie Blueprint)
@@ -771,7 +874,10 @@ document.addEventListener('click', (e) => {
   }
   if (act === 'refresh') { refreshActive({ manual: true }); return; }
   if (act === 'toggle') { el.classList.toggle('open'); return; }
+  if (act === 'week-style') { state.settings.weekStyle = el.dataset.style; save(); render(); return; }
+  if (act === 'ev') { const ev = gridEvents[+el.dataset.i]; if (ev) eventSheet(ev); return; }
   if (el.dataset.day) {
+    if (sheetOpen) closeSheet();
     selDate = +el.dataset.day;
     if (act === 'goto') state.view = 'day';
     render(); return;

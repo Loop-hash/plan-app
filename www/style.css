@@ -267,3 +267,32 @@ input { font: inherit; }
 .theme-tile .tn { font-size: 12.5px; font-weight: 600; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--card); border-radius: 12px; padding: 12px; margin-top: 8px; font-size: 14px; }
 .switch-row input { width: 22px; height: 22px; accent-color: var(--accent); }
+
+/* tydzień: siatka dni × godziny */
+.wswitch { display: flex; gap: 4px; background: var(--bg2); border-radius: 10px; padding: 3px; width: max-content; margin: 0 auto 10px; }
+.wswitch button { padding: 5px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.wswitch button.on { background: var(--card2); color: var(--text); }
+.wg { margin: 0 -10px; }
+.wg-head, .wg-cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.wg-head { grid-template-columns: 30px repeat(var(--cols), minmax(0, 1fr)); margin-bottom: 4px; }
+.wg-dh { display: flex; flex-direction: column; align-items: center; padding: 4px 0; border-radius: 8px; color: var(--muted); font-size: 11px; }
+.wg-dh b { font-size: 15px; color: var(--text); }
+.wg-dh.today b { color: var(--now); }
+.wg-body { position: relative; padding-left: 30px; }
+.wg-hours span { position: absolute; left: 0; width: 26px; text-align: right; transform: translateY(-50%); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wg-lines i { position: absolute; left: 30px; right: 0; border-top: 1px solid var(--line); opacity: .7; }
+.wg-cols { position: absolute; left: 30px; right: 0; top: 0; bottom: 0; }
+.wg-col { position: relative; border-left: 1px solid var(--line); }
+.wg-col.today { background: color-mix(in srgb, var(--now) 6%, transparent); }
+.wg-ev {
+  position: absolute; overflow: hidden; text-align: left; padding: 4px 5px;
+  border-radius: 7px; background: color-mix(in srgb, var(--c) 26%, var(--bg)); border-left: 3px solid var(--c);
+  color: var(--text); display: flex; flex-direction: column; gap: 2px;
+}
+.wg-ev b { font-size: 12.5px; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; color: var(--c); }
+.wg-ev small { font-size: 10px; color: var(--muted); line-height: 1.15; word-break: break-word; }
+.wg-ev.past { opacity: .62; }
+.wg-ev.now { box-shadow: 0 0 0 1.5px var(--now) inset; }
+.wg-now { position: absolute; left: -1px; right: 0; border-top: 2px solid var(--danger); z-index: 2; }
+.wg-now::before { content: ""; position: absolute; left: -5px; top: -5px; width: 8px; height: 8px; border-radius: 4px; background: var(--danger); }
+.sheet-card .card { margin-bottom: 0; }

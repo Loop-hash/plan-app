@@ -312,3 +312,61 @@
 [data-theme="matcha"] .chip { background: #ffffff; color: #2f5427; border: 1.5px solid #2f5427; border-radius: 14px; }
 [data-theme="matcha"] .chip.on { background: #3f6b33; color: #ffffff; border-color: #3f6b33; }
 [data-theme="matcha"] .toast { background: #3f6b33; color: #ffffff; border-radius: 22px; }
+
+/* --- siatka tygodnia w motywach --- */
+[data-theme="blueprint"] .wswitch { background: transparent; border: 1px solid var(--line); border-radius: 0; }
+[data-theme="blueprint"] .wswitch button { border-radius: 0; text-transform: uppercase; letter-spacing: .08em; font-size: 11px; color: #fff; }
+[data-theme="blueprint"] .wswitch button.on { background: #fff; color: #0d4597; }
+[data-theme="blueprint"] .wg-ev { background: rgba(13,69,151,.75); border: 1px solid #fff; border-radius: 0; }
+[data-theme="blueprint"] .wg-ev b { color: #fff; text-transform: uppercase; font-size: 11px; letter-spacing: .03em; }
+[data-theme="blueprint"] .wg-ev small { color: rgba(255,255,255,.85); }
+[data-theme="blueprint"] .wg-ev.now { border-width: 2px; box-shadow: none; background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.12) 0 2px, transparent 2px 8px); }
+[data-theme="blueprint"] .wg-lines i { border-top-style: dashed; }
+[data-theme="blueprint"] .wg-now { border-top-color: #fff; }
+[data-theme="blueprint"] .wg-now::before { background: #fff; border-radius: 0; }
+[data-theme="blueprint"] .wg-dh { border-radius: 0; text-transform: uppercase; color: #fff; }
+[data-theme="blueprint"] .wg-dh.today { background: #fff; color: #0d4597; }
+[data-theme="blueprint"] .wg-dh.today b { color: #0d4597; }
+[data-theme="blueprint"] .wg-col.today { background: rgba(255,255,255,.06); }
+
+[data-theme="klocki"] .wswitch { background: #fff; border: 2px solid #111; }
+[data-theme="klocki"] .wswitch button.on { background: #111; color: #fff; }
+[data-theme="klocki"] .wg-ev { background: var(--c); border: 1.5px solid #111; border-radius: 9px; }
+[data-theme="klocki"] .wg-ev b { color: #111; }
+[data-theme="klocki"] .wg-ev small { color: #222; }
+[data-theme="klocki"] .wg-ev.now { box-shadow: 0 0 0 2px #111 inset; }
+[data-theme="klocki"] .wg-lines i { border-color: #c4c4c9; }
+[data-theme="klocki"] .wg-col { border-color: #c4c4c9; }
+
+[data-theme="atrament"] .wswitch { background: #fff; }
+[data-theme="atrament"] .wswitch button { color: #1f1d3d; }
+[data-theme="atrament"] .wswitch button.on { background: #1f1d3d; color: #fff; }
+[data-theme="atrament"] .wg-ev { background: #fff; border: 2px solid #141226; border-radius: 10px; }
+[data-theme="atrament"] .wg-ev b { color: #1f1d3d; }
+[data-theme="atrament"] .wg-ev small { color: #5a577f; }
+[data-theme="atrament"] .wg-ev.now { background: #f7b88f; box-shadow: none; }
+[data-theme="atrament"] .wg-lines i, [data-theme="atrament"] .wg-col { border-color: rgba(255,255,255,.18); }
+[data-theme="atrament"] .wg-dh, [data-theme="atrament"] .wg-hours span { color: #c9c7e6; }
+[data-theme="atrament"] .wg-dh b { color: #fff; }
+[data-theme="atrament"] .wg-dh.today b { color: #f7b88f; }
+
+[data-theme="mono"] .wswitch { background: #fff; border-radius: 20px; }
+[data-theme="mono"] .wswitch button { border-radius: 16px; color: #111; }
+[data-theme="mono"] .wswitch button.on { background: #111; color: #fff; }
+[data-theme="mono"] .wg-ev { background: #fff; border: 0; border-radius: 10px; box-shadow: inset 3px 0 0 var(--c); }
+[data-theme="mono"] .wg-ev b { color: #111; }
+[data-theme="mono"] .wg-ev.now { background: #111; box-shadow: none; }
+[data-theme="mono"] .wg-ev.now b { color: #fff; }
+[data-theme="mono"] .wg-ev.now small { color: #b9bbc1; }
+[data-theme="mono"] .wg-dh.today b { color: #1d7a55; }
+
+[data-theme="matcha"] .wswitch { background: #fbfaf1; border: 1.5px solid #2f5427; border-radius: 20px; }
+[data-theme="matcha"] .wswitch button { border-radius: 16px; color: #2f5427; }
+[data-theme="matcha"] .wswitch button.on { background: #3f6b33; color: #fff; }
+[data-theme="matcha"] .wg-ev { background: #fbfaf1; border: 1.5px solid #2f5427; border-radius: 12px; }
+[data-theme="matcha"] .wg-ev b { color: #2f5427; }
+[data-theme="matcha"] .wg-ev small { color: #56724e; }
+[data-theme="matcha"] .wg-ev.now { border-color: #c4405e; box-shadow: 0 0 0 1px #c4405e inset; }
+[data-theme="matcha"] .wg-lines i, [data-theme="matcha"] .wg-col { border-color: #a9c79a; }
+[data-theme="matcha"] .wg-now { border-top-color: #c4405e; }
+[data-theme="matcha"] .wg-now::before { background: #c4405e; }
