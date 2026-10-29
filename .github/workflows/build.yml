@@ -55,6 +55,7 @@ jobs:
         run: |
           mkdir -p ~/.android
           cp ci/debug.keystore ~/.android/debug.keystore
+          if [ -n "$ANDROID_USER_HOME" ]; then mkdir -p "$ANDROID_USER_HOME" && cp ci/debug.keystore "$ANDROID_USER_HOME/debug.keystore"; fi
 
       - name: Build APK
         run: |
@@ -63,9 +64,21 @@ jobs:
           sed -i "s/versionName \"1.0\"/versionName \"0.1.${GITHUB_RUN_NUMBER}\"/" android/app/build.gradle
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # podpis zawsze stałym kluczem z ci/ (bez tego Gradle na serwerze tworzył przy każdym buildzie
+          # nowy klucz i aktualizacja APK kończyła się błędem „signatures do not match”)
+          ./gradlew assembleDebug --no-daemon \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/ci/debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
           cp app/build/outputs/apk/debug/app-debug.apk ../Plan.apk
           ls -la ../Plan.apk
+          # sprawdzenie: APK musi być podpisane kluczem z ci/ (inaczej telefony nie przyjmą aktualizacji)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          WANT=$(keytool -list -v -keystore ../ci/debug.keystore -storepass android | grep -m1 'SHA256:' | awk '{print $2}' | tr -d ':' | tr 'A-F' 'a-f')
+          GOT=$("$APKSIGNER" verify --print-certs ../Plan.apk | grep -m1 'SHA-256 digest' | awk '{print $NF}')
+          echo "podpis: $GOT (oczekiwany $WANT)"
+          [ "$GOT" = "$WANT" ]
 
       - name: Przesuń tag latest na ten commit
         run: |

@@ -1225,7 +1225,11 @@ async function doUpdate() {
         text(`${e.phase === 'apk' ? 'Pobieram nową wersję' : 'Pobieram'}… ${e.pct}%`);
       }
       if (e.type === 'status' && e.state === 'confirm') text('Potwierdź instalację w okienku Androida');
-      if (e.type === 'status' && e.state === 'failed') { updating = false; settingsSheet.redraw?.(); toast(`Nie udało się zainstalować${e.message ? ': ' + e.message : ''}`); }
+      if (e.type === 'status' && e.state === 'failed') {
+        updating = false; settingsSheet.redraw?.();
+        if (/signatures do not match|UPDATE_INCOMPATIBLE/i.test(e.message || '')) signatureSheet();
+        else toast(`Nie udało się zainstalować${e.message ? ': ' + e.message : ''}`);
+      }
     });
     if (res === 'web') text('Gotowe, uruchamiam ponownie…');
     else if (res === 'apk-silent') text('Instaluję… Apka za chwilę się zamknie — otwórz ją ponownie ikonką.');
@@ -1241,6 +1245,17 @@ async function doUpdate() {
     updating = false; settingsSheet.redraw?.();
     toast(e.message || 'Nie udało się zaktualizować');
   }
+}
+
+// Zainstalowana apka ma inny podpis niż nowa wersja (np. starsza wersja zbudowana innym kluczem).
+// Android nie pozwala jej nadpisać — trzeba raz odinstalować i zainstalować Plan.apk ręcznie.
+function signatureSheet() {
+  openSheet(`<h3>Potrzebna ręczna instalacja</h3>
+    <p>Ta wersja apki nie może się sama zaktualizować (inny podpis). Trzeba to zrobić <b>raz</b>:</p>
+    <p>1. Odinstaluj apkę Plan (wybrane plany i edycje znikną — trzeba je potem dodać ponownie).<br>
+    2. Pobierz i zainstaluj <b>Plan.apk</b> ze strony wydań.</p>
+    <p>Kolejne aktualizacje będą już działać przyciskiem.</p>
+    <div class="row"><button class="btn" data-act="release-page">Otwórz stronę z Plan.apk</button></div>`);
 }
 
 // ---------- zgłoszenia ----------
@@ -1332,6 +1347,7 @@ document.addEventListener('click', (e) => {
   if (act === 'check-update') { doCheckUpdate(); return; }
   if (act === 'do-update') { doUpdate(); return; }
   if (act === 'install-settings') { openInstallSettings(); return; }
+  if (act === 'release-page') { window.open(RELEASE_PAGE, '_blank'); return; }
   if (act === 'pick-faculty') { facultySheet(); return; }
   if (act === 'add-link') { formSheet(null); return; }
   if (act === 'faculty') { groupListSheet(el.dataset.kod); return; }
