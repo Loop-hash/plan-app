@@ -1763,7 +1763,7 @@ document.addEventListener('click', (e) => {
     if (state.activeId === el.dataset.id) state.activeId = state.plans[0]?.id || null;
     save(); closeSheet(); render(); toast('Plan usunięty'); return;
   }
-  if (act === 'refresh') { refreshActive({ manual: true }); return; }
+  if (act === 'refresh') { refreshActive({ manual: true }); checkReplies(true); return; }
   if (act === 'toggle') {
     const rev = reg[+el.dataset.i];
     if (rev && rev.exam) { eventSheet(rev); return; }
@@ -1803,7 +1803,7 @@ $('plansBtn').addEventListener('click', plansSheet);
 $('settingsBtn').addEventListener('click', settingsSheet);
 $('editBtn').addEventListener('click', () => setEditMode(!editMode));
 $('sheetBackdrop').addEventListener('click', () => closeSheet());
-$('refreshBtn').addEventListener('click', () => refreshActive({ manual: true }));
+$('refreshBtn').addEventListener('click', () => { refreshActive({ manual: true }); checkReplies(true); });
 $('dateLabel').addEventListener('click', () => { selDate = startOfDay(Date.now()); render(); });
 const step = (dir) => { selDate = addDays(selDate, state.view === 'week' ? 7 * dir : dir); render(); };
 $('prevBtn').addEventListener('click', () => step(-1));
