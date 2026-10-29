@@ -28,8 +28,14 @@ async function channel(p) {
   channelMade = true;
 }
 
+// Kiedy przypominać: dni przed egzaminem (0 = w dniu egzaminu)
+export const LEADS = [[14, '2 tyg. przed'], [7, 'tydzień przed'], [3, '3 dni przed'], [1, 'dzień przed'], [0, 'w dniu']];
+export const defaultLeads = () => [1]; // domyślnie: dzień przed
+const leadTitle = (d) => (d === 1 ? 'Jutro' : d === 7 ? 'Za tydzień' : d === 14 ? 'Za 2 tygodnie' : `Za ${d} dni`);
+
 // Lista przypomnień do zaplanowania: [{id, at, title, body}]
-// cfg: { dayBefore: bool, dayBeforeMin: 19*60, before: bool, beforeMin: 120, morningMin: 7*60+30 }
+// cfg: { dayBefore, dayBeforeMin: 19*60, before, beforeMin: 120, morningMin: 7*60+30 }
+// egzamin może mieć własne x.leads = [7, 1, 0] (dni przed); bez tego obowiązują ustawienia ogólne
 export function planReminders(exams, cfg, now = Date.now(), label = (k) => k) {
   const out = [];
   const pad = (n) => String(n).padStart(2, '0');
@@ -41,13 +47,17 @@ export function planReminders(exams, cfg, now = Date.now(), label = (k) => k) {
     const at = (dd, min) => new Date(y, mo - 1, d + dd, Math.floor(min / 60), min % 60).getTime();
     const what = `${label(x.kind)}: ${x.subject}`;
     const where = [x.startMin != null ? `o ${hm(x.startMin)}` : '', x.location ? `sala ${x.location}` : ''].filter(Boolean).join(', ');
-    if (cfg.dayBefore) {
-      out.push({ at: at(-1, cfg.dayBeforeMin ?? 19 * 60), title: `Jutro: ${what}`, body: [where, x.note].filter(Boolean).join(' · ') || 'Powodzenia!' });
-    }
-    if (cfg.before) {
-      const t = x.startMin != null ? at(0, Math.max(0, x.startMin - (cfg.beforeMin ?? 120))) : at(0, cfg.morningMin ?? 7 * 60 + 30);
-      const lead = x.startMin != null ? `Za ${cfg.beforeMin >= 60 ? `${Math.round((cfg.beforeMin ?? 120) / 60)} h` : `${cfg.beforeMin} min`}` : 'Dziś';
-      out.push({ at: t, title: `${lead}: ${what}`, body: [where, x.note].filter(Boolean).join(' · ') || 'Powodzenia!' });
+    const body = [where, x.note].filter(Boolean).join(' · ') || 'Powodzenia!';
+    const leads = Array.isArray(x.leads) ? x.leads : defaultLeads(cfg);
+    for (const L of [...new Set(leads)].sort((a, b) => b - a)) {
+      if (L > 0) {
+        out.push({ at: at(-L, cfg.dayBeforeMin ?? 19 * 60), title: `${leadTitle(L)}: ${what}`, body: L >= 3 && !x.note ? `${body === 'Powodzenia!' ? '' : body + ' · '}czas zacząć się uczyć` : body });
+      } else {
+        const bm = cfg.beforeMin ?? 120;
+        const t = x.startMin != null ? at(0, Math.max(0, x.startMin - bm)) : at(0, cfg.morningMin ?? 7 * 60 + 30);
+        const lead = x.startMin != null ? `Za ${bm >= 60 ? `${Math.round(bm / 60)} h` : `${bm} min`}` : 'Dziś';
+        out.push({ at: t, title: `${lead}: ${what}`, body });
+      }
     }
   }
   return out

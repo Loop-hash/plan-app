@@ -7,7 +7,7 @@ import {
   TYPES, typeByKey, SOURCE_COLORS, emptyEdits, hasEdits, applyEdits, makePatch, occKey, seriesKey,
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
-import { notifyAvailable, ensurePermission, reschedule } from './notify.js';
+import { notifyAvailable, ensurePermission, reschedule, LEADS, defaultLeads } from './notify.js';
 import { sendFeedback, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
@@ -130,6 +130,7 @@ function examSheet(x, presetSubject) {
   const subjects = plan ? planSubjects(plan) : [];
   const cur = x ? x.subject : presetSubject || '';
   const inList = subjects.includes(cur);
+  const leadsSel = new Set(x ? (Array.isArray(x.leads) ? x.leads : x.remind === false ? [] : defaultLeads()) : defaultLeads());
   openSheet(`<h3>${isNew ? 'Nowy egzamin' : 'Edytuj egzamin'}</h3>
     <form id="exForm" autocomplete="off">
       <label class="field"><span>Przedmiot</span><select name="subjSel">
@@ -144,13 +145,22 @@ function examSheet(x, presetSubject) {
       </div>
       <label class="field"><span>Sala</span><input name="location" maxlength="60" value="${esc(x?.location || '')}"></label>
       <label class="field"><span>Notatka (zakres, co przynieść…)</span><textarea name="note" rows="3" maxlength="500">${esc(x?.note || '')}</textarea></label>
-      ${notifyAvailable() ? `<label class="switch-row"><span>Przypomnij mi o tym${state.settings.reminders.enabled ? '' : ' (przypomnienia są wyłączone w Ustawieniach)'}</span><input type="checkbox" name="remind"${x?.remind === false ? '' : ' checked'}></label>` : ''}
+      <div class="field"><span>Przypomnij${state.settings.reminders.enabled ? '' : ' (przypomnienia są wyłączone w Ustawieniach)'}</span>
+        <div class="chips" id="exLeads">${LEADS.map(([d, l]) => `<button type="button" class="chip${leadsSel.has(d) ? ' on' : ''}" data-lead="${d}">${l}</button>`).join('')}</div>
+        <p class="hint" style="margin:6px 0 0">Możesz zaznaczyć kilka. Nic nie zaznaczone — bez przypomnień.</p></div>
       <div class="err-box" id="exErr" hidden></div>
       <div class="sheet-actions"><button type="submit" class="btn">${isNew ? 'Dodaj' : 'Zapisz'}</button><button type="button" class="btn ghost" data-act="close">Anuluj</button></div>
       ${isNew ? '' : '<button type="button" class="btn danger block" id="exDel" style="margin-top:8px">Usuń</button>'}
     </form>`);
   const f = $('exForm');
   f.subjSel.addEventListener('change', () => { $('exOther').hidden = f.subjSel.value !== '__inny'; });
+  $('exLeads').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-lead]'); if (!c) return;
+    e.stopPropagation();
+    const d = +c.dataset.lead;
+    if (leadsSel.has(d)) leadsSel.delete(d); else leadsSel.add(d);
+    c.classList.toggle('on', leadsSel.has(d));
+  });
   f.addEventListener('submit', (e) => {
     e.preventDefault();
     const subject = (f.subjSel.value === '__inny' ? f.subjOther.value : f.subjSel.value).trim();
@@ -159,7 +169,7 @@ function examSheet(x, presetSubject) {
     const err = $('exErr');
     if (!subject) { err.textContent = 'Podaj przedmiot.'; err.hidden = false; return; }
     if (startMin != null && endMin != null && endMin <= startMin) { err.textContent = 'Koniec musi być po początku.'; err.hidden = false; return; }
-    const data = { subject, kind: f.kind.value, date: f.date.value, startMin, endMin: startMin != null ? endMin : null, location: f.location.value.trim(), note: f.note.value.trim(), remind: f.remind ? f.remind.checked : true };
+    const data = { subject, kind: f.kind.value, date: f.date.value, startMin, endMin: startMin != null ? endMin : null, location: f.location.value.trim(), note: f.note.value.trim(), leads: [...leadsSel].sort((a, b) => b - a), remind: leadsSel.size > 0 };
     state.exams = state.exams || [];
     if (isNew) state.exams.push({ id: uid(), ...data }); else Object.assign(x, data);
     save(); closeSheet(); render(); syncReminders(true);
@@ -1335,8 +1345,9 @@ async function drawReminderSettings() {
   box.innerHTML = `
     <label class="switch-row"><span>Przypominaj o egzaminach i kolokwiach</span><input type="checkbox" id="remOn"${R.enabled ? ' checked' : ''}></label>
     ${R.enabled ? `
-    <label class="switch-row"><span>Dzień wcześniej o</span><span class="rem-ctl"><input type="time" id="remDayT" step="300" value="${fmtMin(R.dayBeforeMin)}"><input type="checkbox" id="remDay"${R.dayBefore ? ' checked' : ''}></span></label>
-    <label class="switch-row"><span>W dniu egzaminu, przed startem</span><span class="rem-ctl"><select id="remLead">${leadOpts.slice(0, 4).map(([v, l]) => `<option value="${v}"${R.beforeMin === v ? ' selected' : ''}>${l}</option>`).join('')}</select><input type="checkbox" id="remBefore"${R.before ? ' checked' : ''}></span></label>
+    <p class="hint">Kiedy przypominać, wybierasz przy każdym egzaminie (domyślnie dzień przed). Tu ustawiasz godziny.</p>
+    <label class="switch-row"><span>Przypomnienia „dzień / kilka dni przed” o</span><span class="rem-ctl"><input type="time" id="remDayT" step="300" value="${fmtMin(R.dayBeforeMin)}"></span></label>
+    <label class="switch-row"><span>Przypomnienie „w dniu”: ile przed startem</span><span class="rem-ctl"><select id="remLead">${leadOpts.slice(0, 4).map(([v, l]) => `<option value="${v}"${R.beforeMin === v ? ' selected' : ''}>${l}</option>`).join('')}</select></span></label>
     <p class="hint">Egzaminy bez godziny: przypomnienie rano o ${fmtMin(R.morningMin)}.</p>
     ${perm ? '' : '<button class="btn block" id="remPerm">Zezwól na powiadomienia</button>'}` : ''}`;
   const upd = (fn) => { fn(); save(); syncReminders(); drawReminderSettings(); };
