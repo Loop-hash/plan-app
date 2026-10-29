@@ -8,7 +8,7 @@ import {
   minutesOf, fmtMin, parseMin, isoDate, dateTs,
 } from './edits.js';
 import { notifyAvailable, ensurePermission, reschedule, LEADS, defaultLeads } from './notify.js';
-import { sendFeedback, postReply, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
+import { sendFeedback, postReply, fetchOpenIssues, canSendDirect, canAttach, shrinkImage, recentErrors, logError } from './feedback.js';
 import { isNative, hasUpdater, currentBuild, checkUpdate, applyUpdate, markStarted, openInstallSettings, RELEASE_PAGE } from './updater.js';
 
 const STORE_KEY = 'planapp.v1';
@@ -1628,7 +1628,7 @@ async function adminSheet() {
   try {
     const nc = `?t=${Date.now()}`;
     const [iss, st] = await Promise.all([
-      fetch(ISSUES_URL + 'issues.json' + nc).then((r) => r.json()),
+      fetchOpenIssues().catch(() => fetch(ISSUES_URL + 'issues.json' + nc).then((r) => r.json())),
       fetch(ISSUES_URL + 'agent-state.json' + nc).then((r) => r.json()).catch(() => ({})),
     ]);
     const box = $('admIssues');

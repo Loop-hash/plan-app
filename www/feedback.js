@@ -96,3 +96,21 @@ export async function postReply(number, text) {
   });
   if (!r.ok) throw new Error(`GitHub odpowiedział ${r.status}`);
 }
+
+// Panel admina: otwarte zgłoszenia prosto z API (z kluczem — świeże, bez opóźnienia kopii).
+export async function fetchOpenIssues() {
+  if (!FEEDBACK_TOKEN) throw new Error('brak klucza');
+  const h = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${FEEDBACK_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' };
+  const r = await fetch(`https://api.github.com/repos/${REPO}/issues?state=open&per_page=50&t=${Date.now()}`, { headers: h, cache: 'no-store' });
+  if (!r.ok) throw new Error(`GitHub odpowiedział ${r.status}`);
+  const list = (await r.json()).filter((x) => !x.pull_request);
+  await Promise.all(list.map(async (x) => {
+    x.comment_list = [];
+    if (!x.comments) return;
+    try {
+      const c = await fetch(`https://api.github.com/repos/${REPO}/issues/${x.number}/comments?t=${Date.now()}`, { headers: h, cache: 'no-store' });
+      if (c.ok) x.comment_list = (await c.json()).map((y) => ({ user: y.user?.login, body: y.body, created_at: y.created_at }));
+    } catch (e) { /* */ }
+  }));
+  return { updated: new Date().toISOString(), issues: list.map((x) => ({ number: x.number, title: x.title, created_at: x.created_at, comments: x.comments, comment_list: x.comment_list })) };
+}
