@@ -371,7 +371,7 @@ function render() {
   evMemo = null;
   document.body.classList.toggle('editing', editMode);
   $('editBar').hidden = !editMode || !activePlan();
-  renderTop(); renderContent();
+  renderTop(); renderContent(); renderWelcome();
   const plan = activePlan();
   if (plan) for (const p of planSources(plan)) ensureWeek(p, selDate);
 }
@@ -1487,6 +1487,108 @@ async function feedbackSheet() {
   });
 }
 
+// ---------- powitanie (pierwsze uruchomienie) ----------
+let welcomeStep = !state.plans.length && !state.settings.onboarded ? 1 : 0;
+const WL_ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const WL_BACK = '<button class="wl-round" data-act="wl-back" aria-label="Wstecz"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H6M11 6l-6 6 6 6" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+const WL_CHECK = '<span class="wl-check"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5 9-10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+const wlDots = (n) => `<div class="wl-dots">${[1, 2, 3].map((i) => `<i${i === n ? ' class="on"' : ''}></i>`).join('')}</div>`;
+
+function renderWelcome() {
+  const w = $('welcome');
+  if (!w) return;
+  if (!welcomeStep) { if (!w.hidden) { w.hidden = true; w.innerHTML = ''; } return; }
+  w.hidden = false;
+  const keep = $('wlSearch')?.value || '';
+  if (welcomeStep === 1) w.innerHTML = welcome1();
+  else if (welcomeStep === 2) w.innerHTML = welcome2(keep);
+  else w.innerHTML = welcome3();
+  const inp = $('wlSearch');
+  if (inp) inp.addEventListener('input', () => filterFaculties(inp.value));
+  $('wlRem')?.addEventListener('change', (e) => { state.settings.reminders.enabled = e.target.checked; save(); });
+}
+
+function welcome1() {
+  return `<div class="wl-page">${wlDots(1)}
+    <div class="wl-stack">
+      <div class="wl-card c1"><b>Gas dynamics</b><div><span>Wykład · A-318</span><strong>8:00</strong></div></div>
+      <div class="wl-card c2"><b>Propulsion — lab <em>TERAZ</em></b><div><span>Lab. gr. 4 · B-220</span><strong>10:00</strong></div></div>
+      <div class="wl-card c3"><b>Egzamin: mechanika</b><div><span>za 12 dni</span><strong>12:15</strong></div></div>
+    </div>
+    <div class="wl-panel">
+      <h1>Twój plan.<br>Zawsze aktualny.</h1>
+      <p>Pobieramy plan prosto z USOS, bez logowania. Natychmiast dowiesz się, kiedy coś się zmieni.</p>
+      <ul>
+        <li><i class="k1"></i>Zmiany w planie oznaczone na czerwono</li>
+        <li><i class="k3"></i>Egzaminy z odliczaniem i przypomnieniem</li>
+        <li><i class="k4"></i>Działa offline, ustawiasz zajęcia po swojemu</li>
+      </ul>
+      <button class="wl-btn" data-act="wl-next">Zaczynamy ${WL_ARROW}</button>
+      <div class="wl-small">Masz link z USOS? <button class="wl-link" data-act="wl-link">Wklej go</button></div>
+    </div></div>`;
+}
+
+function filterFaculties(q) {
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let shown = 0;
+  document.querySelectorAll('#wlFac .wl-fac').forEach((b) => {
+    const ok = words.every((x) => b.dataset.hay.includes(x));
+    b.hidden = !ok; if (ok) shown++;
+  });
+  const none = $('wlNone'); if (none) none.hidden = !!shown;
+}
+
+function welcome2(q) {
+  const plan = activePlan();
+  let body;
+  if (plan) {
+    const sub = plan.kind === 'usos' ? (plan.src?.cycleLabel || plan.src?.cdyd || '') : plan.kind === 'ical' ? 'Twój plan z linku USOS' : '';
+    body = `<div class="wl-chosen"><div><b>${esc(plan.name)}</b><span>${esc(sub)}</span></div>${WL_CHECK}</div>
+      <button class="wl-row" data-act="edit" data-id="${plan.id}"><b>Zmień grupy lub nazwę</b><span>Jeśli coś się nie zgadza</span></button>
+      ${plan.kind === 'usos' ? `<button class="wl-row dashed" data-act="add-subject"><i class="wl-plus">+</i><div><b>Dodaj lektorat i UBZO</b><span>Można też później, w trybie edycji</span></div></button>
+      ${(plan.extras || []).map((x) => `<div class="wl-extra">${WL_CHECK}${esc(x.nazwa)}</div>`).join('')}` : ''}
+      <div class="wl-grow"></div>
+      <button class="wl-btn" data-act="wl-next">Dalej</button>`;
+  } else {
+    body = `<label class="wl-search"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="2.2" fill="none"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <input id="wlSearch" placeholder="Szukaj wydziału" autocomplete="off" value="${esc(q)}"></label>
+      <p class="wl-hint">Kierunki międzywydziałowe są pod jednym wydziałem — np. Aeronautics and Aerospace Engineering jest pod Wydziałem Inżynierii Środowiska i Energetyki.</p>
+      <div id="wlFac">${FACULTIES.map(([kod, nazwa]) => `<button class="wl-fac" data-act="faculty" data-kod="${kod}" data-hay="${esc(`${nazwa} ${kod}`.toLowerCase())}">${esc(nazwa)}</button>`).join('')}
+      <p class="wl-hint" id="wlNone" hidden>Nic nie pasuje.</p></div>
+      <button class="wl-row" data-act="wl-link"><b>Wklej link z USOSweb</b><span>Twój osobisty plan (eksport iCal)</span></button>`;
+  }
+  const out = `<div class="wl-page">
+    <div class="wl-head">${WL_BACK}${wlDots(2)}<span class="wl-sp"></span></div>
+    <div class="wl-title"><h2>${plan ? 'Twój plan jest gotowy' : 'Gdzie studiujesz?'}</h2>
+      <p>${plan ? 'Sprawdź grupy i dodaj przedmioty wybierane osobno.' : 'Wybierz wydział, potem swój kierunek i grupy.'}</p></div>
+    ${body}</div>`;
+  if (!plan && q) setTimeout(() => filterFaculties(q), 0);
+  return out;
+}
+
+function welcome3() {
+  const cur = state.settings.theme || 'klocki';
+  const tiles = THEMES.map((t) => `<button class="wl-theme${t.id === cur ? ' on' : ''}" data-act="theme" data-theme="${t.id}">
+      <span class="wl-prev" style="background:${t.bar}">${t.sw.slice(0, 3).map((c) => `<i style="background:${c}"></i>`).join('')}</span>
+      <b>${esc(t.name)}</b>${t.id === 'klocki' ? '<span>domyślny</span>' : ''}${t.id === cur ? WL_CHECK : ''}</button>`).join('');
+  const R = state.settings.reminders;
+  return `<div class="wl-page">
+    <div class="wl-head">${WL_BACK}${wlDots(3)}<button class="wl-skip" data-act="wl-done">Pomiń</button></div>
+    <div class="wl-title"><h2>Jak ma wyglądać?</h2><p>Zmienisz to w każdej chwili w ustawieniach.</p></div>
+    <div class="wl-themes">${tiles}</div>
+    <label class="wl-row wl-switch"><div><b>Przypominaj o egzaminach</b><span>domyślnie dzień wcześniej o ${fmtMin(R.dayBeforeMin)}</span></div>
+      <input type="checkbox" id="wlRem"${R.enabled ? ' checked' : ''}></label>
+    <div class="wl-grow"></div>
+    <button class="wl-btn hot" data-act="wl-done">${activePlan() ? 'Pokaż mój plan' : 'Gotowe'}</button></div>`;
+}
+
+async function finishWelcome() {
+  welcomeStep = 0;
+  state.settings.onboarded = true;
+  save(); render(); maybeAutoRefresh();
+  if (state.settings.reminders.enabled && notifyAvailable()) { try { await ensurePermission(true); } catch (e) { /* */ } syncReminders(); }
+}
+
 // ---------- zdarzenia ----------
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act], [data-view], [data-day]');
@@ -1501,9 +1603,14 @@ document.addEventListener('click', (e) => {
   }
   if (act === 'theme') {
     state.settings.theme = el.dataset.theme; save(); applyTheme(); render();
+    if (el.classList.contains('wl-theme')) return;
     document.querySelectorAll('.theme-tile').forEach((t) => t.classList.toggle('on', t.dataset.theme === el.dataset.theme));
     return;
   }
+  if (act === 'wl-next') { welcomeStep = Math.min(3, welcomeStep + 1); renderWelcome(); $('welcome').scrollTop = 0; return; }
+  if (act === 'wl-back') { welcomeStep = Math.max(1, welcomeStep - 1); renderWelcome(); return; }
+  if (act === 'wl-link') { if (welcomeStep === 1) { welcomeStep = 2; renderWelcome(); } formSheet(null); return; }
+  if (act === 'wl-done') { finishWelcome(); return; }
   if (act === 'check-update') { doCheckUpdate(); return; }
   if (act === 'do-update') { doUpdate(); return; }
   if (act === 'install-settings') { openInstallSettings(); return; }
