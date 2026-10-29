@@ -1328,8 +1328,8 @@ async function settingsSheet() {
     <div class="list-head">Zgłoszenia</div>
     <button class="choice" data-act="feedback"><b>Zgłoś błąd albo pomysł</b><span>Trafi prosto do twórcy apki.</span></button>
     <div class="list-head">O apce</div>
-    <div class="help">Plan · ${esc(ver)}${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
-    <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny (test)</button>
+    <div class="help"><span data-act="ver-tap">Plan · ${esc(ver)}</span>${b.sha ? ` · ${esc(b.sha)}` : ''}<br>Plany z publicznego katalogu USOSweb Politechniki Śląskiej albo z Twojego linku iCal. Dane zostają na telefonie.</div>
+    ${isAdmin() ? '<button class="choice" data-act="admin"><b>Panel admina</b><span>Zgłoszenia, agent, log błędów, podgląd powitania</span></button>' : ''}
     <button class="btn ghost block" data-act="wl-show" style="margin-top:10px">Pokaż ekran powitalny</button>
 `);
   $('setWeekends').addEventListener('change', (e) => { state.settings.weekends = e.target.checked; save(); render(); });
@@ -1591,6 +1591,69 @@ async function finishWelcome() {
   if (state.settings.reminders.enabled && notifyAvailable()) { try { await ensurePermission(true); } catch (e) { /* */ } syncReminders(); }
 }
 
+// ---------- tryb admina (flaga tylko na telefonie twórcy) ----------
+const ADMIN_KEY = 'planapp.admin';
+const ISSUES_URL = 'https://raw.githubusercontent.com/Loop-hash/plan-app/zgloszenia/';
+function isAdmin() { try { return localStorage.getItem(ADMIN_KEY) === '1'; } catch (e) { return false; } }
+// ODBLOKOWANIE — do usunięcia w następnej wersji (flaga zostaje na telefonie)
+let adminTaps = [];
+function adminTap() {
+  if (isAdmin()) { toast('Tryb admina jest już włączony'); return; }
+  const now = Date.now();
+  adminTaps = adminTaps.filter((t) => now - t < 3000).concat(now);
+  if (adminTaps.length >= 7) {
+    try { localStorage.setItem(ADMIN_KEY, '1'); } catch (e) { toast('Nie udało się zapisać'); return; }
+    adminTaps = []; toast('Tryb admina włączony'); settingsSheet();
+  } else if (adminTaps.length >= 4) toast(`Jeszcze ${7 - adminTaps.length}…`);
+}
+
+async function adminRefreshAll() {
+  const list = state.plans.filter((p) => p.kind !== 'merge');
+  toast(`Odświeżam ${list.length} ${list.length === 1 ? 'plan' : 'plany'}…`);
+  for (const p of list) { try { await refreshPlan(p, { quiet: true }); } catch (e) { logError(`admin refresh: ${e.message}`); } }
+  save(); render(); toast('Gotowe — wszystkie plany odświeżone');
+}
+
+async function adminSheet() {
+  const errs = recentErrors();
+  let size = 0;
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); size += k.length + (localStorage.getItem(k) || '').length; } } catch (e) { /* */ }
+  const b = await currentBuild();
+  openSheet(`<h3>Panel admina</h3>
+    <div class="list-head">Zgłoszenia i agent</div>
+    <div id="admIssues"><p class="hint">Pobieram…</p></div>
+    <div class="list-head">Narzędzia</div>
+    <button class="choice" data-act="wl-show"><b>Pokaż ekran powitalny</b><span>Podgląd — niczego nie usuwa</span></button>
+    <button class="choice" data-act="adm-refresh"><b>Odśwież wszystkie plany teraz</b><span>Pomija limit automatycznego odświeżania</span></button>
+    <button class="choice" data-act="adm-update"><b>Sprawdź aktualizację od razu</b><span>Bez czekania 6 h od ostatniego sprawdzenia</span></button>
+    <div class="list-head">Log błędów (${errs.length})</div>
+    <div class="help adm-log">${errs.length ? errs.slice().reverse().map(esc).join('<br>') : 'Pusto — żadnych błędów.'}</div>
+    ${errs.length ? '<button class="btn ghost block" data-act="adm-clearlog" style="margin-top:8px">Wyczyść log</button>' : ''}
+    <div class="list-head">Ten telefon</div>
+    <div class="help">wersja: ${esc(b.build ? `0.1.${b.build}` : 'dev')}${b.sha ? ` (${esc(b.sha)})` : ''}<br>planów: ${state.plans.length}, egzaminów: ${(state.exams || []).length}<br>dane w pamięci: ${Math.round(size / 1024)} KB<br>motyw: ${esc(state.settings.theme)}</div>`);
+  try {
+    const nc = `?t=${Date.now()}`;
+    const [iss, st] = await Promise.all([
+      fetch(ISSUES_URL + 'issues.json' + nc).then((r) => r.json()),
+      fetch(ISSUES_URL + 'agent-state.json' + nc).then((r) => r.json()).catch(() => ({})),
+    ]);
+    const box = $('admIssues');
+    if (!box) return;
+    const handled = st.handled || {};
+    const list = iss.issues || [];
+    box.innerHTML = (list.length ? list.map((x) => {
+      const h = handled[x.number];
+      return `<div class="plan-item"><div class="pi-main"><div class="pi-name">#${x.number} ${esc(x.title)}</div>
+        <div class="pi-sub">${esc(fmtShort(Date.parse(x.created_at)))}${x.comments ? ` · ${x.comments} kom.` : ''}${h ? ` · agent: ${esc(h.status)}` : ' · agent: jeszcze nie widział'}</div>
+        ${h?.note ? `<div class="pi-sub">${esc(h.note)}</div>` : ''}</div></div>`;
+    }).join('') : '<p class="hint">Brak otwartych zgłoszeń.</p>')
+      + `<p class="hint">Lista z ${esc(fmtDateTime(Date.parse(iss.updated)))}${st.lastRun ? ` · agent ostatnio: ${esc(fmtDateTime(Date.parse(st.lastRun)))}` : ''}</p>`;
+  } catch (e) {
+    const box = $('admIssues');
+    if (box) box.innerHTML = `<p class="hint">Nie udało się pobrać zgłoszeń: ${esc(e.message)}</p>`;
+  }
+}
+
 // ---------- zdarzenia ----------
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act], [data-view], [data-day]');
@@ -1613,7 +1676,12 @@ document.addEventListener('click', (e) => {
   if (act === 'wl-back') { welcomeStep = Math.max(1, welcomeStep - 1); renderWelcome(); return; }
   if (act === 'wl-link') { if (welcomeStep === 1) { welcomeStep = 2; renderWelcome(); } formSheet(null); return; }
   if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
-  if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; } // TYMCZASOWE
+  if (act === 'wl-show') { closeSheet(); welcomeStep = 1; renderWelcome(); $('welcome').scrollTop = 0; return; }
+  if (act === 'ver-tap') { adminTap(); return; } // ODBLOKOWANIE — do usunięcia w następnej wersji
+  if (act === 'admin') { adminSheet(); return; }
+  if (act === 'adm-refresh') { adminRefreshAll(); return; }
+  if (act === 'adm-update') { try { localStorage.removeItem(UPD_KEY); } catch (e2) { /* */ } closeSheet(); settingsSheet().then(() => doCheckUpdate()); return; }
+  if (act === 'adm-clearlog') { try { localStorage.removeItem('planapp.errlog'); } catch (e2) { /* */ } adminSheet(); return; }
   if (act === 'wl-done') { finishWelcome(); return; }
   if (act === 'check-update') { doCheckUpdate(); return; }
   if (act === 'do-update') { doUpdate(); return; }

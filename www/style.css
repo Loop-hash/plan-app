@@ -457,3 +457,5 @@ body.editing .toast { bottom: calc(var(--safe-bottom) + 150px); }
 .wl-switch input:checked { background: #111; }
 .wl-switch input:checked::after { left: 23px; background: #b6efd9; }
 .wl-row:not(.dashed):not(.wl-switch) { flex-direction: column; align-items: stretch; gap: 0; }
+
+.adm-log { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; word-break: break-word; }
