@@ -1,4 +1,8 @@
 import { parseICS, classType, diffEvents, normalizeUrl } from './ics.js';
+import {
+  FACULTIES, urls, parseGroups, parsePrograms, parseCycles, pickCycle, parsePlan, components,
+  isSelected, toEvent, mondayISO, isoToTs, codePrefix,
+} from './usos.js';
 
 const STORE_KEY = 'planapp.v1';
 const AUTO_REFRESH_MS = 30 * 60 * 1000;
@@ -87,10 +91,60 @@ async function fetchPlanText(url) {
   } finally { if (timer) clearTimeout(timer); }
 }
 
+// --- plany z katalogu USOS (wybrane z listy) ---
+const WEEKS_AHEAD = 4;
+function rebuildUsosEvents(plan) {
+  const evs = [];
+  for (const [iso, entries] of Object.entries(plan.weeks || {})) {
+    const mon = isoToTs(iso);
+    for (const e of entries) if (isSelected(e, plan.sel)) evs.push(toEvent(e, mon));
+  }
+  evs.sort((a, b) => a.start - b.start || a.end - b.end);
+  return evs;
+}
+async function fetchWeek(plan, iso) {
+  const html = await fetchPlanText(urls.week(plan.src.kod, plan.src.cdyd, iso));
+  const entries = parsePlan(html);
+  plan.weeks = plan.weeks || {};
+  plan.weeks[iso] = entries;
+}
+function weeksToRefresh(extraTs) {
+  const set = new Set();
+  const now = Date.now();
+  for (let i = 0; i < WEEKS_AHEAD; i++) set.add(mondayISO(now + i * 7 * DAY));
+  if (extraTs) set.add(mondayISO(extraTs));
+  return [...set];
+}
+const weekLoading = new Set();
+const weekFailed = new Map();
+async function ensureWeek(plan, ts) {
+  if (!plan || plan.kind !== 'usos' || !plan.src) return;
+  const iso = mondayISO(ts);
+  if ((plan.weeks && plan.weeks[iso]) || weekLoading.has(iso)) return;
+  if (Date.now() - (weekFailed.get(iso) || 0) < 60000) return;
+  weekLoading.add(iso); renderTop();
+  try {
+    await fetchWeek(plan, iso);
+    plan.events = rebuildUsosEvents(plan);
+    save();
+  } catch (e) { weekFailed.set(iso, Date.now()); toast(e.message || String(e)); }
+  finally { weekLoading.delete(iso); render(); }
+}
+
 async function refreshPlan(plan, { quiet = false } = {}) {
   let changed = 0;
-  const text = await fetchPlanText(plan.url);
-  const events = parseICS(text);
+  let events;
+  if (plan.kind === 'usos') {
+    const isos = weeksToRefresh(selDate);
+    await Promise.all(isos.map((iso) => fetchWeek(plan, iso)));
+    // stare tygodnie (sprzed ponad 2 tygodni) wyrzucamy, żeby nie puchło
+    const keepFrom = isoToTs(mondayISO(Date.now() - 14 * DAY));
+    for (const iso of Object.keys(plan.weeks)) if (isoToTs(iso) < keepFrom) delete plan.weeks[iso];
+    events = rebuildUsosEvents(plan);
+  } else {
+    const text = await fetchPlanText(plan.url);
+    events = parseICS(text);
+  }
   if (plan.events && plan.fetchedAt) {
     const items = diffEvents(plan.events, events, Date.now());
     if (items.length) {
@@ -127,7 +181,7 @@ function maybeAutoRefresh() {
 }
 
 // ---------- render ----------
-function render() { renderTop(); renderContent(); }
+function render() { renderTop(); renderContent(); ensureWeek(activePlan(), selDate); }
 
 function renderTop() {
   const plan = activePlan();
@@ -138,6 +192,7 @@ function renderTop() {
   st.classList.remove('err');
   if (!plan) st.textContent = '';
   else if (refreshing) st.textContent = 'Odświeżanie…';
+  else if (weekLoading.size) st.textContent = 'Pobieranie tygodnia…';
   else if (plan.error) { st.textContent = `⚠ ${plan.error}` + (plan.fetchedAt ? ` · dane z ${ago(plan.fetchedAt)}` : ''); st.classList.add('err'); }
   else if (plan.fetchedAt) st.textContent = `Zaktualizowano ${ago(plan.fetchedAt)}`;
   else st.textContent = '';
@@ -186,6 +241,13 @@ function renderContent() {
       : `<div class="empty"><div class="big">⏳</div><h2>Pobieranie planu…</h2></div>`;
     return;
   }
+  if (plan.kind === 'usos' && state.view !== 'changes' && !(plan.weeks && plan.weeks[mondayISO(selDate)])) {
+    const failed = Date.now() - (weekFailed.get(mondayISO(selDate)) || 0) < 60000;
+    c.innerHTML = failed
+      ? `<div class="empty"><div class="big">⚠</div><h2>Nie udało się pobrać tego tygodnia</h2><p>Sprawdź internet i spróbuj za chwilę.</p></div>`
+      : `<div class="empty"><div class="big">⏳</div><h2>Pobieram ten tydzień…</h2></div>`;
+    return;
+  }
   if (state.view === 'week') c.innerHTML = weekView(plan);
   else if (state.view === 'changes') c.innerHTML = changesView(plan);
   else c.innerHTML = dayView(plan);
@@ -195,9 +257,9 @@ function emptyNoPlans() {
   return `<div class="empty">
     <div class="big">📅</div>
     <h2>Dodaj swój pierwszy plan</h2>
-    <p>Wklej link do planu z USOSweb, a apka będzie go sama aktualizować.</p>
+    <p>Wybierz swój kierunek i grupy z listy (albo wklej link z USOSweb), a apka będzie sama pilnować aktualnego planu.</p>
     <button class="btn" data-act="add">+ Dodaj plan</button>
-  </div>${helpBox()}`;
+  </div>`;
 }
 
 function helpBox() {
@@ -306,6 +368,7 @@ function openSheet(html) {
 function closeSheet(fromPop = false) {
   if (!sheetOpen) return;
   sheetOpen = false;
+  $('sheet').onclick = null;
   $('sheet').hidden = true; $('sheetBackdrop').hidden = true;
   if (!fromPop) { try { history.back(); } catch (e) { /* */ } }
 }
@@ -376,17 +439,177 @@ function formSheet(plan) {
   setTimeout(() => { if (!editing) form.name.focus(); }, 50);
 }
 
+// ---------- wybór planu z katalogu USOS ----------
+function addChooserSheet() {
+  openSheet(`<h3>Dodaj plan</h3>
+    <button class="choice" data-act="pick-faculty">
+      <b>Wybierz z listy</b><span>Wydział → kierunek i semestr → Twoje grupy. Bez logowania.</span></button>
+    <button class="choice" data-act="add-link">
+      <b>Wklej link z USOSweb</b><span>Twój osobisty plan (eksport iCal) — dokładnie te zajęcia, na które jesteś zapisany.</span></button>`);
+}
+
+function facultySheet() {
+  let html = '<h3>Wybierz wydział</h3><p class="hint">Kierunki międzywydziałowe są zwykle przypisane do jednego wydziału — np. Aeronautics and Aerospace Engineering jest pod Wydziałem Inżynierii Środowiska i Energetyki.</p>';
+  for (const [kod, nazwa] of FACULTIES) {
+    html += `<button class="list-item" data-act="faculty" data-kod="${kod}">${esc(nazwa)}</button>`;
+  }
+  openSheet(html);
+}
+
+const groupCache = {};
+async function groupListSheet(jed) {
+  const fac = (FACULTIES.find((f) => f[0] === jed) || [jed, jed])[1];
+  openSheet(`<h3>${esc(fac)}</h3><div class="empty"><div class="big">⏳</div><p>Pobieram listę kierunków…</p></div>`);
+  try {
+    if (!groupCache[jed]) {
+      const [gHtml, pHtml] = await Promise.all([fetchPlanText(urls.groups(jed)), fetchPlanText(urls.programs(jed)).catch(() => '')]);
+      groupCache[jed] = { groups: parseGroups(gHtml), programs: parsePrograms(pHtml) };
+    }
+  } catch (e) {
+    openSheet(`<h3>${esc(fac)}</h3><div class="empty"><div class="big">⚠</div><p>${esc(e.message)}</p>
+      <button class="btn" data-act="faculty" data-kod="${jed}">Spróbuj ponownie</button></div>`);
+    return;
+  }
+  if (!sheetOpen) return;
+  const { groups, programs } = groupCache[jed];
+  openSheet(`<h3>${esc(fac)}</h3>
+    <label class="field"><input id="groupSearch" placeholder="Szukaj (np. lotnicza, 3 semestr, ang)" autocomplete="off"></label>
+    <div id="groupList"></div>`);
+  const renderList = () => {
+    const q = $('groupSearch').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const byProg = new Map();
+    for (const g of groups) {
+      const prog = programs[codePrefix(g.kod)] || codePrefix(g.kod);
+      const hay = `${prog} ${g.nazwa} ${g.kod}`.toLowerCase();
+      if (q.some((w) => !hay.includes(w))) continue;
+      if (!byProg.has(prog)) byProg.set(prog, []);
+      byProg.get(prog).push(g);
+    }
+    let html = '';
+    for (const [prog, list] of [...byProg.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pl'))) {
+      html += `<div class="list-head">${esc(prog)}</div>`;
+      for (const g of list) {
+        html += `<button class="list-item" data-act="group" data-jed="${jed}" data-kod="${esc(g.kod)}" data-prog="${esc(prog)}" data-nazwa="${esc(g.nazwa)}">
+          ${esc(g.nazwa)}<small>${esc(g.kod)}</small></button>`;
+      }
+    }
+    $('groupList').innerHTML = html || '<p class="hint">Nic nie pasuje do wyszukiwania.</p>';
+  };
+  $('groupSearch').addEventListener('input', renderList);
+  renderList();
+}
+
+// Arkusz wyboru grup. plan = istniejący (edycja) albo null (nowy z src).
+async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
+  const src = plan ? { ...plan.src } : { jed, kod, prog, nazwa };
+  openSheet(`<h3>${esc(src.prog || src.kod)}</h3><div class="empty"><div class="big">⏳</div><p>Pobieram plan…</p></div>`);
+  let comps;
+  try {
+    if (!src.cdyd || !plan) {
+      const cycles = parseCycles(await fetchPlanText(urls.group(src.jed, src.kod)));
+      const cyc = pickCycle(cycles);
+      if (!cyc) throw new Error('Ten kierunek nie ma opublikowanego planu w USOS.');
+      src.cdyd = cyc.cdyd; src.cycleLabel = cyc.label;
+    }
+    comps = components(parsePlan(await fetchPlanText(urls.semester(src.kod, src.cdyd))));
+    if (!comps.length) throw new Error('Plan na ten semestr jest pusty.');
+  } catch (e) {
+    openSheet(`<h3>${esc(src.prog || src.kod)}</h3><div class="empty"><div class="big">⚠</div><p>${esc(e.message)}</p>
+      <button class="btn ghost" data-act="close">Zamknij</button></div>`);
+    return;
+  }
+  if (!sheetOpen) return;
+  const sel = { ...(plan?.sel || {}) };
+  const multi = comps.filter((c) => c.groups.length > 1);
+  const types = [...new Set(multi.map((c) => c.typeCode))];
+  const maxG = (t) => Math.max(...multi.filter((c) => c.typeCode === t).map((c) => c.groups.length));
+  const typeName = (t) => (multi.find((c) => c.typeCode === t) || {}).typeFull || t;
+  const semNo = (/(\d+)\s*semestr/.exec(src.nazwa || '') || [])[1];
+  const defName = plan?.name || `${src.prog || 'Plan'}${semNo ? ` · sem. ${semNo}` : ''}`;
+
+  const chips = (c) => ['all', ...c.groups.map((g) => g.group)].map((g) => {
+    const on = String(sel[c.compId] ?? 'all') === String(g);
+    const slots = g === 'all' ? '' : c.groups.find((x) => x.group === g).slots.join(', ');
+    return `<button type="button" class="chip${on ? ' on' : ''}" data-comp="${esc(c.compId)}" data-g="${g}" title="${esc(slots)}">${g === 'all' ? 'wszystkie' : `gr. ${g}`}</button>`;
+  }).join('');
+
+  const draw = () => {
+    let html = `<h3>${plan ? 'Edytuj plan' : 'Twoje grupy'}</h3>
+      <label class="field"><span>Nazwa planu</span><input id="gsName" maxlength="40" value="${esc($('gsName')?.value ?? defName)}"></label>
+      <p class="hint">${esc(src.cycleLabel || src.cdyd)} · wybierz grupę przy zajęciach, które mają kilka grup. Wykłady dodają się same.</p>`;
+    if (types.length) {
+      html += '<div class="quick"><div class="list-head">Szybko: ta sama grupa dla wszystkich</div>';
+      for (const t of types) {
+        html += `<div class="quick-row"><span>${esc(typeName(t))}</span><div class="chips">`;
+        for (let g = 1; g <= maxG(t); g++) html += `<button type="button" class="chip" data-type="${esc(t)}" data-g="${g}">${g}</button>`;
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+    let lastName = '';
+    for (const c of comps) {
+      if (c.name !== lastName) { html += `<div class="list-head">${esc(c.name)}</div>`; lastName = c.name; }
+      const single = c.groups.length === 1;
+      html += `<div class="comp"><div class="comp-type">${esc(c.typeFull)}${single ? ` <small>· ${esc(c.groups[0].slots.join(', '))}</small>` : ''}</div>
+        ${single ? '' : `<div class="chips">${chips(c)}</div>`}</div>`;
+    }
+    html += `<div class="sheet-actions"><button class="btn" id="gsSave">${plan ? 'Zapisz' : 'Dodaj plan'}</button>
+      <button class="btn ghost" data-act="close">Anuluj</button></div>
+      ${plan ? `<button type="button" class="btn danger block" data-act="delete" data-id="${plan.id}" style="margin-top:8px">Usuń ten plan</button>` : ''}`;
+    const scroll = $('sheet').scrollTop;
+    openSheet(html);
+    $('sheet').scrollTop = scroll;
+  };
+  draw();
+
+  $('sheet').onclick = async (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) {
+      e.stopPropagation();
+      if (chip.dataset.comp) sel[chip.dataset.comp] = chip.dataset.g === 'all' ? 'all' : +chip.dataset.g;
+      else if (chip.dataset.type) {
+        for (const c of multi) if (c.typeCode === chip.dataset.type && c.groups.some((g) => g.group === +chip.dataset.g)) sel[c.compId] = +chip.dataset.g;
+      }
+      draw();
+      return;
+    }
+    if (e.target.id === 'gsSave') {
+      e.stopPropagation();
+      const name = ($('gsName').value || '').trim() || defName;
+      const target = plan || { id: uid(), kind: 'usos', src, weeks: {} };
+      target.name = name;
+      target.sel = sel;
+      target.src = src;
+      if (plan) target.events = rebuildUsosEvents(target);
+      else { state.plans.push(target); }
+      state.activeId = target.id;
+      save(); closeSheet(); render();
+      if (!plan) refreshActive();
+      else toast('Zapisano');
+    }
+  };
+}
+
 // ---------- zdarzenia ----------
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act], [data-view], [data-day]');
   if (!el) return;
   const act = el.dataset.act;
   if (el.dataset.view) { state.view = el.dataset.view; save(); render(); window.scrollTo(0, 0); return; }
-  if (act === 'edit') { e.stopPropagation(); formSheet(state.plans.find((p) => p.id === el.dataset.id)); return; }
+  if (act === 'edit') {
+    e.stopPropagation();
+    const p = state.plans.find((x) => x.id === el.dataset.id);
+    if (p?.kind === 'usos') groupSelectSheet({ plan: p }); else formSheet(p);
+    return;
+  }
+  if (act === 'pick-faculty') { facultySheet(); return; }
+  if (act === 'add-link') { formSheet(null); return; }
+  if (act === 'faculty') { groupListSheet(el.dataset.kod); return; }
+  if (act === 'group') { groupSelectSheet({ jed: el.dataset.jed, kod: el.dataset.kod, prog: el.dataset.prog, nazwa: el.dataset.nazwa }); return; }
   if (act === 'pick') {
     state.activeId = el.dataset.id; save(); closeSheet(); render(); maybeAutoRefresh(); return;
   }
-  if (act === 'add') { formSheet(null); return; }
+  if (act === 'add') { addChooserSheet(); return; }
   if (act === 'close') { closeSheet(); return; }
   if (act === 'delete') {
     const p = state.plans.find((x) => x.id === el.dataset.id);
