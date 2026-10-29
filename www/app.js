@@ -24,9 +24,9 @@ let refreshing = false;
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (s && Array.isArray(s.plans)) return { view: 'day', ...s, settings: { theme: 'blueprint', weekends: false, ...(s.settings || {}), reminders: { ...DEFAULT_REMINDERS, ...((s.settings || {}).reminders || {}) } } };
+    if (s && Array.isArray(s.plans)) return { view: 'day', ...s, settings: { theme: 'klocki', weekends: false, ...(s.settings || {}), reminders: { ...DEFAULT_REMINDERS, ...((s.settings || {}).reminders || {}) } } };
   } catch (e) { /* brak/uszkodzone dane */ }
-  return { plans: [], activeId: null, view: 'day', settings: { theme: 'blueprint', weekends: false, reminders: { ...DEFAULT_REMINDERS } } };
+  return { plans: [], activeId: null, view: 'day', settings: { theme: 'klocki', weekends: false, reminders: { ...DEFAULT_REMINDERS } } };
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -1267,8 +1267,8 @@ async function groupSelectSheet({ plan, jed, kod, prog, nazwa }) {
 
 // ---------- motywy ----------
 const THEMES = [
-  { id: 'blueprint', name: 'Blueprint', bar: '#0d4597', sw: ['#0d4597', '#ffffff', '#5d86c9'] },
   { id: 'klocki', name: 'Kolorowe klocki', bar: '#e7e7ea', sw: ['#b6efd9', '#f0643c', '#f6a8dc', '#0b84c8'] },
+  { id: 'blueprint', name: 'Blueprint', bar: '#0d4597', sw: ['#0d4597', '#ffffff', '#5d86c9'] },
   { id: 'atrament', name: 'Atrament', bar: '#ffffff', sw: ['#1f1d3d', '#ffffff', '#f7b88f'] },
   { id: 'mono', name: 'Mono', bar: '#e6e7e9', sw: ['#e6e7e9', '#111111', '#bfe6dc'] },
   { id: 'matcha', name: 'Matcha', bar: '#fbfaf1', sw: ['#fbfaf1', '#d3e6c3', '#c4405e'] },
@@ -1313,7 +1313,7 @@ async function settingsSheet() {
     return `<div class="upd"><div class="upd-text" id="updText">${update ? 'Masz najnowszą wersję.' : ''}</div>
       <button class="btn ghost block" data-act="check-update">Sprawdź aktualizacje</button></div>`;
   };
-  const cur = state.settings?.theme || 'blueprint';
+  const cur = state.settings?.theme || 'klocki';
   const themes = THEMES.map((t) => `<button class="theme-tile${t.id === cur ? ' on' : ''}" data-act="theme" data-theme="${t.id}">
       <span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><span class="tn">${esc(t.name)}</span></button>`).join('');
   openSheet(`<h3>Ustawienia</h3>
