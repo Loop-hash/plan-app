@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -51,6 +55,11 @@ jobs:
         with:
           name: Plan-apk
           path: Plan.apk
+
+      - name: Przesuń tag latest na ten commit
+        run: |
+          git tag -f latest
+          git push -f origin latest
 
       - name: Wydanie „najnowsza wersja”
         uses: softprops/action-gh-release@v2
