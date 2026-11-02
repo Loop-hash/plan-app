@@ -127,7 +127,11 @@
 [data-theme="klocki"] .big-time span { font-size: 13px; font-weight: 500; }
 [data-theme="klocki"] .card.now { box-shadow: none; border-width: 3px; }
 [data-theme="klocki"] .now-tag { background: #111111; color: #ffffff; border-radius: 10px; padding: 2px 9px; font-size: 11.5px; }
-[data-theme="klocki"] .progress { height: 6px; background: #111111; border-radius: 0 0 0 24px; }
+[data-theme="klocki"] .progress {
+  /* karta ma overflow: visible (wypustka), więc pasek sam przycina się do zaokrąglonego dołu karty */
+  left: 0; right: 0; width: auto !important; height: 24px; border-radius: 0 0 23px 23px;
+  background: linear-gradient(#111111, #111111) left bottom / var(--p, 0%) 6px no-repeat;
+}
 [data-theme="klocki"] .card.past { opacity: 0.45; }
 [data-theme="klocki"] .gap { justify-content: center; margin: -4px 0 10px; color: #111111; font-weight: 600; }
 [data-theme="klocki"] .gap::before, [data-theme="klocki"] .gap::after { display: none; }

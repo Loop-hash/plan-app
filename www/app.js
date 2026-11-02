@@ -492,7 +492,7 @@ function eventCard(ev, now) {
     <div class="meta"><span class="type-pill">${esc(type.label)}</span>${ev.location ? `<span class="loc">${PIN}${esc(ev.location)}</span>` : ''}${srcTag(ev)}${ev.hidden ? '<span class="ed-tag">ukryte</span>' : ev.custom ? '<span class="ed-tag">✎ Twoje</span>' : ev.edited ? '<span class="ed-tag">✎ zmienione</span>' : ''}</div>
     ${ev.allDay ? '' : `<div class="big-time"><b>${fmtTime(ev.start)}</b><span>–${fmtTime(ev.end)}</span></div>`}
     ${desc}
-    ${isNow ? `<div class="progress" style="width:${prog.toFixed(1)}%"></div>` : ''}
+    ${isNow ? `<div class="progress" style="width:${prog.toFixed(1)}%;--p:${prog.toFixed(1)}%"></div>` : ''}
   </div>`;
 }
 
