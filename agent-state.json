@@ -19,6 +19,16 @@
    "status": "pominiete",
    "at": "2026-10-29T17:30:09Z",
    "note": "śmieć"
+  },
+  "10": {
+   "status": "naprawione",
+   "at": "2026-11-02T12:30:26Z",
+   "note": "commit 4037ff7: pasek postępu w motywie Klocki przycięty do zaokrąglonych rogów karty"
+  },
+  "9": {
+   "status": "pominiete",
+   "at": "2026-11-02T12:30:26Z",
+   "note": "test"
   }
  }
 }
