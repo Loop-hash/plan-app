@@ -238,18 +238,35 @@ let reg = [];
 const regEv = (ev) => reg.push(ev) - 1;
 
 // ---------- pobieranie ----------
+// Pobranie strony planu. USOS miewa krótkie „czkawki” (503, brak odpowiedzi) — wtedy po cichu
+// próbujemy jeszcze raz, a jeśli dalej nie działa, mówimy wprost, że to problem po stronie USOS-a.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchPlanText(url) {
-  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = ctrl ? setTimeout(() => ctrl.abort(), 25000) : null;
-  try {
-    const res = await fetch(url, { cache: 'no-store', signal: ctrl?.signal });
-    if (!res.ok) throw new Error(`Serwer odpowiedział błędem ${res.status}.`);
-    return await res.text();
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error('Przekroczono czas oczekiwania — sprawdź internet.');
-    if (e instanceof TypeError) throw new Error('Brak połączenia z serwerem — sprawdź internet.');
-    throw e;
-  } finally { if (timer) clearTimeout(timer); }
+  const usos = url.includes('usosweb.');
+  const who = usos ? 'USOS' : 'Serwer planu';
+  const zWho = usos ? 'z USOS-em' : 'z serwerem planu';
+  const delays = [2000, 5000];
+  for (let attempt = 0; ; attempt++) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Brak internetu.');
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
+    let err; let retry = false;
+    try {
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl?.signal });
+      if (res.ok) return await res.text();
+      if (res.status >= 500 || res.status === 429) { retry = true; err = new Error(`${who} ma chwilowe problemy (błąd ${res.status}).`); }
+      else err = new Error(`${who} odpowiedział błędem ${res.status}.`);
+    } catch (e) {
+      retry = true;
+      if (e.name === 'AbortError') err = new Error(`${who} nie odpowiada — pewnie ma chwilowe problemy.`);
+      else if (e instanceof TypeError) err = new Error(`Nie można połączyć się ${zWho} — sprawdź internet albo spróbuj za chwilę.`);
+      else { err = e; retry = false; }
+    } finally { if (timer) clearTimeout(timer); }
+    // przy braku odpowiedzi tylko jedna dodatkowa próba (każda trwa do 20 s)
+    const max = /nie odpowiada/.test(err.message) ? 1 : delays.length;
+    if (!retry || attempt >= max) throw err;
+    await sleep(delays[attempt]);
+  }
 }
 
 // --- plany z katalogu USOS (wybrane z listy) ---
@@ -388,7 +405,7 @@ function renderTop() {
   if (!plan) st.textContent = '';
   else if (refreshing) st.textContent = 'Odświeżanie…';
   else if (weekLoading.size) st.textContent = 'Pobieranie tygodnia…';
-  else if (plan.error) { st.textContent = `⚠ ${plan.error}` + (plan.fetchedAt ? ` · dane z ${ago(plan.fetchedAt)}` : ''); st.classList.add('err'); }
+  else if (plan.error) { st.textContent = `⚠ ${plan.error}` + (plan.fetchedAt ? ` Pokazuję plan zapisany ${ago(plan.fetchedAt)}.` : ''); st.classList.add('err'); }
   else if (plan.fetchedAt) st.textContent = `Zaktualizowano ${ago(plan.fetchedAt)}`;
   else st.textContent = '';
 
@@ -443,7 +460,7 @@ function renderContent() {
   if (plan.kind === 'usos' && state.view !== 'changes' && state.view !== 'exams' && !(plan.weeks && plan.weeks[mondayISO(selDate)])) {
     const failed = Date.now() - (weekFailed.get(mondayISO(selDate)) || 0) < 60000;
     c.innerHTML = failed
-      ? `<div class="empty"><div class="big">⚠</div><h2>Nie udało się pobrać tego tygodnia</h2><p>Sprawdź internet i spróbuj za chwilę.</p></div>`
+      ? `<div class="empty"><div class="big">⚠</div><h2>Nie udało się pobrać tego tygodnia</h2><p>Sprawdź internet albo spróbuj za kilka minut — USOS czasem ma chwilowe problemy.</p></div>`
       : `<div class="empty"><div class="big">⏳</div><h2>Pobieram ten tydzień…</h2></div>`;
     return;
   }
@@ -509,15 +526,17 @@ function dayView(plan) {
   let html = '';
   let lastEnd = null;
   for (const ev of evs) {
-    if (lastEnd !== null && ev.start - lastEnd >= 15 * 60000) {
+    // wydarzenia całodniowe (np. kolokwium bez godziny) nie liczą się do okienek
+    if (!ev.allDay && lastEnd !== null && ev.start - lastEnd >= 15 * 60000) {
       html += `<div class="gap"><span>okienko ${dur(ev.start - lastEnd)}</span></div>`;
     }
     html += eventCard(ev, now);
-    lastEnd = Math.max(lastEnd ?? 0, ev.end);
+    if (!ev.allDay) lastEnd = Math.max(lastEnd ?? 0, ev.end);
   }
-  const first = evs[0];
-  const last = evs[evs.length - 1];
-  html += `<p class="hint day-sum">${evs.length} ${zajec(evs.length)} · ${first.allDay ? '' : `${fmtTime(first.start)}–${fmtTime(last.end)}`}</p>`;
+  const timed = evs.filter((e) => !e.allDay);
+  const first = timed[0];
+  const lastT = timed.reduce((a, e) => Math.max(a, e.end), 0);
+  html += `<p class="hint day-sum">${evs.length} ${zajec(evs.length)}${first ? ` · ${fmtTime(first.start)}–${fmtTime(lastT)}` : ''}</p>`;
   html += titleBlock(plan, evs);
   return html;
 }
