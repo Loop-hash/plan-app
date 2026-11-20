@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-20T23:02:37Z",
+  "updated": "2026-11-20T23:06:45Z",
   "issues": [
     {
       "body": "Dodanie widoku jak w zakładce \"tydzień gdzie usunięte zajęcia są przekreślone a zajęcia dodane mają zieloną poświatę\n\n— Twórca, przez apkę\n\n![zrzut 1](https://raw.githubusercontent.com/Loop-hash/plan-app-feedback/main/img/2026-11-20-fehar8bj.jpg)\n\n<details><summary>Informacje techniczne</summary>\n\n```\nwersja: 0.1.32 (4037ff7)\nmotyw: klocki, widok: changes\nplan: Inżynieria lotnicza i kosmiczna · sem. 3 (ang.) [usos] ILKAIS>2(3)25_26 2026/2027-Z\nplanów: 1, edycji: 0, własnych zajęć: 1\ndzień w apce: 2026-11-28\nurządzenie: Mozilla/5.0 (Linux; Android 16; A142 Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/157.0.8103.50 Mobile Safari/537.36\nostatnie błędy:\n2026-11-04T15:02 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-04T15:02 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-04T15:02 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-04T15:03 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-04T15:03 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-05T14:30 odświeżanie usos: Brak połączenia z serwerem — sprawdź internet.\n2026-11-05T14:38 odświeżanie usos: Brak połączenia z serwerem — sprawdź internet.\n2026-11-12T13:29 odświeżanie usos: Brak połączenia z serwerem — sprawdź internet.\n2026-11-16T15:03 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-16T15:03 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-16T15:03 odświeżanie usos: Serwer odpowiedział błędem 503.\n2026-11-18T08:35 odświeżanie usos: Brak połączenia z serwerem — sprawdź internet.\n```\n</details>",
@@ -19,7 +19,7 @@
       "labels": [],
       "number": 12,
       "title": "[Błąd] Zepsuło się wyświetlanie czasu okienek.",
-      "updated_at": "2026-11-19T09:08:29Z",
+      "updated_at": "2026-11-20T23:06:39Z",
       "user": "Loop-hash",
       "comment_list": []
     },
@@ -30,7 +30,7 @@
       "labels": [],
       "number": 11,
       "title": "[Błąd] Błąd serwera?",
-      "updated_at": "2026-11-04T15:03:44Z",
+      "updated_at": "2026-11-20T23:06:38Z",
       "user": "Loop-hash",
       "comment_list": []
     },
@@ -41,7 +41,7 @@
       "labels": [],
       "number": 9,
       "title": "[Błąd] test test",
-      "updated_at": "2026-10-29T22:19:39Z",
+      "updated_at": "2026-11-20T23:06:39Z",
       "user": "Loop-hash",
       "comment_list": []
     }
