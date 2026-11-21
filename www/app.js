@@ -582,14 +582,35 @@ function lanes(evs) {
   if (cluster.length) flush();
   return out;
 }
+// Znaczniki zmian z ostatniego odświeżenia do widoku tygodnia:
+// nowe/zmienione zajęcia (świecą na zielono) i odwołane („duchy”, przekreślone).
+const chKey = (e) => `${e.summary}|${e.start}|${e.end}`;
+function changeMarks(plan, from, to) {
+  const fresh = new Set();
+  const ghosts = [];
+  const srcs = plan.kind === 'merge' ? planSources(plan) : [plan];
+  for (const p of srcs) {
+    for (const c of p.changes?.items || []) {
+      if (c.after && c.type !== 'removed') fresh.add(chKey(c.after));
+      if (c.before && (c.type === 'removed' || c.type === 'moved') && c.before.end > Date.now()
+        && c.before.start >= from && c.before.start < to) ghosts.push({ ...c.before, ghost: true, ghostType: c.type });
+    }
+  }
+  return { fresh, ghosts };
+}
+
 function weekGrid(plan) {
   const ws = startOfWeek(selDate);
   const today = startOfDay(Date.now());
   const now = Date.now();
+  const marks = changeMarks(plan, ws, addDays(ws, 7));
+  let marked = 0;
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(ws, i);
-    const evs = eventsOn(plan, d).filter((e) => !e.allDay);
+    const real = eventsOn(plan, d).filter((e) => !e.allDay);
+    const gh = marks.ghosts.filter((g) => !g.allDay && g.start >= d && g.start < addDays(d, 1));
+    const evs = real.concat(gh).sort((a, b) => a.start - b.start || a.end - b.end);
     if (i < 5 || evs.length || state.settings?.weekends) days.push({ d, evs });
   }
   const all = days.flatMap((x) => x.evs);
@@ -608,10 +629,19 @@ function weekGrid(plan) {
     for (const { e, lane, n } of lanes(evs)) {
       const top = (hourOf(e.start) - minH) * HOUR_PX;
       const h = Math.max(18, (hourOf(e.end) - hourOf(e.start)) * HOUR_PX - 2);
+      if (e.ghost) {
+        marked++;
+        const gt = splitTitle(e);
+        blocks += `<button class="wg-ev ghost" data-view="changes" aria-label="Odwołane: ${esc(gt.title)}" style="--c: ${colorOf(e, gt.type)}; top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
+          <b>${esc(abbrev(gt.title))}</b>${h > 40 && n < 3 ? `<small>${e.ghostType === 'moved' ? 'przeniesione' : 'odwołane'}</small>` : ''}</button>`;
+        continue;
+      }
+      const isFresh = !e.custom && !e.exam && marks.fresh.has(chKey(e)) && e.end > now;
+      if (isFresh) marked++;
       const { type, title } = splitTitle(e);
       const idx = regEv(e);
       const room = (e.location || '').split(' · ')[0];
-      const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}${e.hidden ? ' hidden-ev' : ''}${e.edited || e.custom ? ' edited' : ''}${e.srcColor ? ' src' : ''}${n > 1 ? ' narrow' : ''}`;
+      const cls = `wg-ev t-${type.key}${e.end <= now ? ' past' : ''}${e.start <= now && now < e.end ? ' now' : ''}${e.hidden ? ' hidden-ev' : ''}${e.edited || e.custom ? ' edited' : ''}${e.srcColor ? ' src' : ''}${n > 1 ? ' narrow' : ''}${isFresh ? ' fresh' : ''}`;
       blocks += `<button class="${cls}" data-act="ev" data-i="${idx}" data-col="${col}" style="--c: ${colorOf(e, type)}; --s: ${e.srcColor || 'transparent'}; top:${top.toFixed(1)}px; height:${h.toFixed(1)}px; left:calc(${(lane / n) * 100}% + 1px); width:calc(${100 / n}% - 2px)">
         <b>${e.exam ? '⚑ ' + esc(abbrev(title.replace(/^[^:]+:\s*/, ''))) : esc(abbrev(title))}</b>${h > 40 && n < 3 ? `<small>${esc(type.code)}${room ? ` · ${esc(room)}` : ''}</small>` : ''}</button>`;
     }
@@ -636,7 +666,7 @@ function weekGrid(plan) {
       <div class="wg-lines">${lines}</div>
       <div class="wg-cols">${cols}</div>
     </div>
-  </div>`;
+  </div>${marked ? `<button class="wg-legend" data-view="changes"><span class="lg-new"></span>nowe lub zmienione<span class="lg-gone"></span>odwołane<em>szczegóły →</em></button>` : ''}`;
 }
 function eventSheet(e) {
   if (e.exam) { examSheet((state.exams || []).find((x) => x.id === e.examId)); return; }
@@ -1031,7 +1061,7 @@ function moveSheet(ev, dayTs, startMin) {
 let drag = null;
 document.addEventListener('pointerdown', (e) => {
   if (!editMode) return;
-  const el = e.target.closest('.wg-ev');
+  const el = e.target.closest('.wg-ev[data-i]');
   if (!el) return;
   const col = el.closest('.wg-col');
   drag = { el, id: +el.dataset.i, col: +el.dataset.col, x: e.clientX, y: e.clientY, w: col.getBoundingClientRect().width, moved: false, pid: e.pointerId };
